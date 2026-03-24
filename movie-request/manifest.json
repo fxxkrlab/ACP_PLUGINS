@@ -1,0 +1,75 @@
+{
+  "id": "movie-request",
+  "name": "TMDB Movie Request",
+  "version": "1.0.0",
+  "description": "TMDB movie/TV request system with multi-key rotation and media library check",
+  "author": {
+    "name": "NovaHelix",
+    "email": "dev@novahelix.com"
+  },
+  "license": "GPL-3.0",
+  "repository": "https://github.com/fxxkrlab/ACP_PLUGINS",
+  "icon": "Film",
+  "color": "#00D9FF",
+  "categories": ["media", "automation"],
+  "tags": ["tmdb", "movie", "tv", "request"],
+
+  "compatibility": {
+    "min_panel_version": "1.0.0"
+  },
+
+  "capabilities": {
+    "database": true,
+    "bot_handler": true,
+    "api_routes": true,
+    "frontend_pages": true,
+    "settings_tab": true
+  },
+
+  "permissions": {
+    "core_api_scopes": ["users:read", "bots:read"],
+    "bot_events": ["message"]
+  },
+
+  "entry_point": "backend/plugin.py",
+  "bot_handler_priority": 30,
+
+  "frontend": {
+    "remote_entry": "frontend/dist/remoteEntry.js",
+    "sidebar": [
+      {
+        "path": "/p/movie-request",
+        "label": "Requests",
+        "icon": "Film",
+        "minRole": "admin",
+        "position": "after:bots"
+      }
+    ],
+    "settings_tabs": [
+      {
+        "key": "tmdb",
+        "label": "TMDB Keys",
+        "module": "./settings/TmdbTab"
+      }
+    ]
+  },
+
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "tmdb_language": {
+        "type": "string",
+        "default": "zh-CN",
+        "title": "TMDB API Language"
+      }
+    }
+  },
+
+  "uninstall": {
+    "confirm_message": "This will delete all movie request data including request history and TMDB API keys.",
+    "options": {
+      "keep_data": { "label": "Keep database tables", "default": true },
+      "drop_tables": { "label": "Delete all plugin data permanently", "default": false }
+    }
+  }
+}
