@@ -8,7 +8,8 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Use the Panel's database URL
+# Plugin migrations are managed manually (not auto-generated).
+# The PluginMigrationRunner sets sqlalchemy.url and version_table dynamically.
 target_metadata = None
 
 def run_migrations_offline():

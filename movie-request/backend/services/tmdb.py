@@ -113,22 +113,26 @@ class TmdbClient:
             logger.error("TMDB request failed: %s", e)
             return None
 
-    async def get_movie(self, session: AsyncSession, tmdb_id: int) -> Optional[dict[str, Any]]:
+    async def get_movie(
+        self, session: AsyncSession, tmdb_id: int, language: str = "zh-CN"
+    ) -> Optional[dict[str, Any]]:
         """Fetch movie details from TMDB."""
-        return await self._request(session, f"/movie/{tmdb_id}", {"language": "zh-CN"})
+        return await self._request(session, f"/movie/{tmdb_id}", {"language": language})
 
-    async def get_tv(self, session: AsyncSession, tmdb_id: int) -> Optional[dict[str, Any]]:
+    async def get_tv(
+        self, session: AsyncSession, tmdb_id: int, language: str = "zh-CN"
+    ) -> Optional[dict[str, Any]]:
         """Fetch TV show details from TMDB."""
-        return await self._request(session, f"/tv/{tmdb_id}", {"language": "zh-CN"})
+        return await self._request(session, f"/tv/{tmdb_id}", {"language": language})
 
     async def get_media(
-        self, session: AsyncSession, media_type: str, tmdb_id: int
+        self, session: AsyncSession, media_type: str, tmdb_id: int, language: str = "zh-CN"
     ) -> Optional[dict[str, Any]]:
         """Fetch movie or TV details based on media_type."""
         if media_type == "movie":
-            return await self.get_movie(session, tmdb_id)
+            return await self.get_movie(session, tmdb_id, language)
         elif media_type == "tv":
-            return await self.get_tv(session, tmdb_id)
+            return await self.get_tv(session, tmdb_id, language)
         return None
 
 

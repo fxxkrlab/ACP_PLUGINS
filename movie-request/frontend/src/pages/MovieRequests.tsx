@@ -161,6 +161,9 @@ export default function MovieRequests() {
       queryClient.invalidateQueries({ queryKey: ['movie-requests'] });
       queryClient.invalidateQueries({ queryKey: ['movie-request-stats'] });
     },
+    onError: (error: Error) => {
+      console.error('Failed to update request:', error.message);
+    },
   });
 
   const items = data?.items || [];

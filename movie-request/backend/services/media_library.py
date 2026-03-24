@@ -9,6 +9,7 @@ and the request is forwarded to the admin panel as usual.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 from sqlalchemy import select, text
@@ -17,6 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.models import MediaLibraryConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_identifier(name: str) -> bool:
+    """Validate SQL identifier to prevent injection."""
+    return bool(re.match(r'^[a-zA-Z_][a-zA-Z0-9_]{0,62}$', name))
 
 
 async def _get_config(session: AsyncSession) -> Optional[MediaLibraryConfig]:
@@ -55,6 +61,17 @@ async def check_in_library(
     """
     cfg = await _get_config(session)
     if cfg is None:
+        return False
+
+    # Validate identifiers to prevent SQL injection
+    if not _validate_identifier(cfg.table_name):
+        logger.error("Invalid table_name: %s", cfg.table_name)
+        return False
+    if not _validate_identifier(cfg.tmdb_id_column):
+        logger.error("Invalid tmdb_id_column: %s", cfg.tmdb_id_column)
+        return False
+    if cfg.media_type_column and not _validate_identifier(cfg.media_type_column):
+        logger.error("Invalid media_type_column: %s", cfg.media_type_column)
         return False
 
     try:
