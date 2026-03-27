@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import httpx
@@ -44,7 +44,7 @@ class TmdbClient:
 
     async def _get_best_key(self, session: AsyncSession) -> Optional[TmdbApiKey]:
         """Pick the active, non-rate-limited key with lowest request_count."""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         # First, clear expired rate limits
         result = await session.execute(
             select(TmdbApiKey).where(
@@ -69,6 +69,8 @@ class TmdbClient:
         )
         return result.scalar_one_or_none()
 
+    _MAX_KEY_RETRIES = 3
+
     async def _request(
         self,
         session: AsyncSession,
@@ -76,42 +78,47 @@ class TmdbClient:
         params: Optional[dict[str, Any]] = None,
     ) -> Optional[dict[str, Any]]:
         """Make an authenticated TMDB API request with key rotation."""
-        key = await self._get_best_key(session)
-        if not key:
-            logger.error("No available TMDB API keys")
-            return None
+        for attempt in range(self._MAX_KEY_RETRIES):
+            key = await self._get_best_key(session)
+            if not key:
+                logger.error("No available TMDB API keys")
+                return None
 
-        headers = {}
-        query_params = params or {}
+            headers = {}
+            query_params = dict(params) if params else {}
 
-        if key.access_token:
-            headers["Authorization"] = f"Bearer {key.access_token}"
-        else:
-            query_params["api_key"] = key.api_key
+            if key.access_token:
+                headers["Authorization"] = f"Bearer {key.access_token}"
+            else:
+                query_params["api_key"] = key.api_key
 
-        url = f"{TMDB_BASE_URL}{path}"
-        try:
-            resp = await self._http.get(url, headers=headers, params=query_params)
+            url = f"{TMDB_BASE_URL}{path}"
+            try:
+                resp = await self._http.get(url, headers=headers, params=query_params)
 
-            if resp.status_code == 429:
-                # Rate limited -- mark this key
-                key.is_rate_limited = True
-                key.rate_limited_until = datetime.utcnow() + timedelta(seconds=60)
-                logger.warning("TMDB key %s rate-limited, retrying with next key", key.name)
-                await session.flush()
-                # Try once more with a different key
-                return await self._request(session, path, params)
+                if resp.status_code == 429:
+                    key.is_rate_limited = True
+                    key.rate_limited_until = datetime.now(timezone.utc) + timedelta(seconds=60)
+                    logger.warning(
+                        "TMDB key %s rate-limited, attempt %d/%d",
+                        key.name, attempt + 1, self._MAX_KEY_RETRIES,
+                    )
+                    await session.flush()
+                    continue
 
-            key.request_count += 1
-            resp.raise_for_status()
-            return resp.json()
+                key.request_count += 1
+                resp.raise_for_status()
+                return resp.json()
 
-        except httpx.HTTPStatusError as e:
-            logger.error("TMDB API error %s: %s", e.response.status_code, e.response.text[:200])
-            return None
-        except httpx.RequestError as e:
-            logger.error("TMDB request failed: %s", e)
-            return None
+            except httpx.HTTPStatusError as e:
+                logger.error("TMDB API error %s: %s", e.response.status_code, e.response.text[:200])
+                return None
+            except httpx.RequestError as e:
+                logger.error("TMDB request failed: %s", e)
+                return None
+
+        logger.error("All TMDB keys exhausted after %d retries", self._MAX_KEY_RETRIES)
+        return None
 
     async def get_movie(
         self, session: AsyncSession, tmdb_id: int, language: str = "zh-CN"

@@ -26,6 +26,9 @@ async def teardown() -> None:
     # Close TMDB client if open
     from backend.services.tmdb import close_tmdb_client
     await close_tmdb_client()
+    # Dispose media library engine cache
+    from backend.services.media_library import dispose_engines
+    await dispose_engines()
     _context = None
     logger.info("Movie Request plugin deactivated")
 

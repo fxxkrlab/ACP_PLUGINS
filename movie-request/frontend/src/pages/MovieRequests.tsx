@@ -136,6 +136,7 @@ export default function MovieRequests() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const [page, setPage] = useState(1);
+  const [mutatingId, setMutatingId] = useState<number | null>(null);
 
   const { data: stats } = useQuery({
     queryKey: ['movie-request-stats'],
@@ -155,14 +156,19 @@ export default function MovieRequests() {
   });
 
   const mutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
-      updateMovieRequest(id, { status }),
+    mutationFn: ({ id, status }: { id: number; status: string }) => {
+      setMutatingId(id);
+      return updateMovieRequest(id, { status });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['movie-requests'] });
       queryClient.invalidateQueries({ queryKey: ['movie-request-stats'] });
     },
     onError: (error: Error) => {
       console.error('Failed to update request:', error.message);
+    },
+    onSettled: () => {
+      setMutatingId(null);
     },
   });
 
@@ -348,22 +354,28 @@ export default function MovieRequests() {
                       <td className="px-5 py-3 text-right">
                         {req.status === 'pending' && (
                           <div className="flex items-center gap-2 justify-end">
-                            <button
-                              onClick={() => mutation.mutate({ id: req.id, status: 'fulfilled' })}
-                              disabled={mutation.isPending}
-                              className="p-1.5 rounded-md hover:bg-[#059669]/10 text-[#6a6a6a] hover:text-[#059669] transition-colors"
-                              title="Fulfill"
-                            >
-                              <Check size={16} />
-                            </button>
-                            <button
-                              onClick={() => mutation.mutate({ id: req.id, status: 'rejected' })}
-                              disabled={mutation.isPending}
-                              className="p-1.5 rounded-md hover:bg-[#FF4444]/10 text-[#6a6a6a] hover:text-[#FF4444] transition-colors"
-                              title="Reject"
-                            >
-                              <X size={16} />
-                            </button>
+                            {mutatingId === req.id ? (
+                              <Loader2 size={16} className="text-[#6a6a6a] animate-spin" />
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => mutation.mutate({ id: req.id, status: 'fulfilled' })}
+                                  disabled={mutatingId !== null}
+                                  className="p-1.5 rounded-md hover:bg-[#059669]/10 text-[#6a6a6a] hover:text-[#059669] transition-colors disabled:opacity-30"
+                                  title="Fulfill"
+                                >
+                                  <Check size={16} />
+                                </button>
+                                <button
+                                  onClick={() => mutation.mutate({ id: req.id, status: 'rejected' })}
+                                  disabled={mutatingId !== null}
+                                  className="p-1.5 rounded-md hover:bg-[#FF4444]/10 text-[#6a6a6a] hover:text-[#FF4444] transition-colors disabled:opacity-30"
+                                  title="Reject"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </td>

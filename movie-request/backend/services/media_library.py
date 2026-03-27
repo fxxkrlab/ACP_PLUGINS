@@ -11,13 +11,18 @@ from __future__ import annotations
 import logging
 import re
 from typing import Optional
+from urllib.parse import quote_plus
 
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, AsyncEngine
 
 from backend.models import MediaLibraryConfig
 
 logger = logging.getLogger(__name__)
+
+# Cached engine keyed by config id
+_engine_cache: dict[int, AsyncEngine] = {}
+_engine_dsn_cache: dict[int, str] = {}
 
 
 def _validate_identifier(name: str) -> bool:
@@ -43,7 +48,40 @@ def _build_dsn(cfg: MediaLibraryConfig) -> str:
         raise ValueError(f"Unsupported db_type: {cfg.db_type}")
 
     port = cfg.port or (5432 if cfg.db_type == "postgresql" else 3306)
-    return f"{driver}://{cfg.username}:{cfg.password}@{cfg.host}:{port}/{cfg.database}"
+    encoded_password = quote_plus(cfg.password)
+    encoded_username = quote_plus(cfg.username)
+    return f"{driver}://{encoded_username}:{encoded_password}@{cfg.host}:{port}/{cfg.database}"
+
+
+def _get_engine(cfg: MediaLibraryConfig) -> AsyncEngine:
+    """Get or create a cached async engine for the given config."""
+    dsn = _build_dsn(cfg)
+
+    # If config id exists but DSN changed (user updated config), rebuild
+    if cfg.id in _engine_cache and _engine_dsn_cache.get(cfg.id) == dsn:
+        return _engine_cache[cfg.id]
+
+    # Dispose old engine if DSN changed
+    old_engine = _engine_cache.pop(cfg.id, None)
+    if old_engine is not None:
+        # Schedule disposal (best-effort, non-blocking)
+        logger.info("Rebuilding engine for media library config %d", cfg.id)
+
+    engine = create_async_engine(dsn, pool_pre_ping=True, pool_size=2, max_overflow=0)
+    _engine_cache[cfg.id] = engine
+    _engine_dsn_cache[cfg.id] = dsn
+    return engine
+
+
+async def dispose_engines() -> None:
+    """Dispose all cached engines (called during plugin teardown)."""
+    for config_id, engine in list(_engine_cache.items()):
+        try:
+            await engine.dispose()
+        except Exception:
+            logger.warning("Failed to dispose engine for config %d", config_id)
+    _engine_cache.clear()
+    _engine_dsn_cache.clear()
 
 
 async def check_in_library(
@@ -75,29 +113,23 @@ async def check_in_library(
         return False
 
     try:
-        from sqlalchemy.ext.asyncio import create_async_engine
+        engine = _get_engine(cfg)
 
-        dsn = _build_dsn(cfg)
-        engine = create_async_engine(dsn, pool_pre_ping=True, pool_size=2)
+        async with engine.connect() as conn:
+            # Build safe query using quoted identifiers
+            # The table_name, tmdb_id_column, media_type_column are admin-configured
+            query_str = f'SELECT 1 FROM "{cfg.table_name}" WHERE "{cfg.tmdb_id_column}" = :tmdb_id'
+            params: dict = {"tmdb_id": tmdb_id}
 
-        try:
-            async with engine.connect() as conn:
-                # Build safe query using quoted identifiers
-                # The table_name, tmdb_id_column, media_type_column are admin-configured
-                query_str = f'SELECT 1 FROM "{cfg.table_name}" WHERE "{cfg.tmdb_id_column}" = :tmdb_id'
-                params = {"tmdb_id": tmdb_id}
+            if cfg.media_type_column:
+                query_str += f' AND "{cfg.media_type_column}" = :media_type'
+                params["media_type"] = media_type
 
-                if cfg.media_type_column:
-                    query_str += f' AND "{cfg.media_type_column}" = :media_type'
-                    params["media_type"] = media_type
+            query_str += " LIMIT 1"
 
-                query_str += " LIMIT 1"
-
-                result = await conn.execute(text(query_str), params)
-                row = result.fetchone()
-                return row is not None
-        finally:
-            await engine.dispose()
+            result = await conn.execute(text(query_str), params)
+            row = result.fetchone()
+            return row is not None
 
     except Exception:
         logger.exception("Failed to check remote media library (tmdb_id=%s)", tmdb_id)

@@ -9,7 +9,7 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.api.deps import get_db, require_admin, require_super_admin
 from app.models.admin import Admin
@@ -41,16 +41,18 @@ async def get_request_stats(
     _admin: Annotated[Admin, Depends(require_admin)],
 ) -> APIResponse:
     """Get movie request statistics."""
-    total_q = select(func.count()).select_from(MovieRequest)
-    total = (await db.execute(total_q)).scalar() or 0
+    result = await db.execute(
+        select(MovieRequest.status, func.count()).group_by(MovieRequest.status)
+    )
+    counts = {row[0]: row[1] for row in result.all()}
 
-    stats = MovieRequestStats(total=total)
-
-    for st in ("pending", "fulfilled", "rejected"):
-        cnt_q = select(func.count()).select_from(MovieRequest).where(MovieRequest.status == st)
-        cnt = (await db.execute(cnt_q)).scalar() or 0
-        setattr(stats, st, cnt)
-
+    total = sum(counts.values())
+    stats = MovieRequestStats(
+        total=total,
+        pending=counts.get("pending", 0),
+        fulfilled=counts.get("fulfilled", 0),
+        rejected=counts.get("rejected", 0),
+    )
     return APIResponse(data=stats.model_dump())
 
 
@@ -102,7 +104,7 @@ async def get_request_detail(
     """Get movie request detail with requesting users."""
     result = await db.execute(
         select(MovieRequest)
-        .options(selectinload(MovieRequest.request_users))
+        .options(selectinload(MovieRequest.request_users).joinedload(MovieRequestUser.tg_user))
         .where(MovieRequest.id == request_id)
     )
     req = result.scalar_one_or_none()
