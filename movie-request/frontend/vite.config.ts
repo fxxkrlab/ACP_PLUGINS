@@ -5,21 +5,13 @@ export default defineConfig({
   plugins: [react()],
   build: {
     lib: {
-      entry: {
-        'remoteEntry': 'src/index.ts',
-      },
-      formats: ['es'],
-      fileName: (_, entryName) => `${entryName}.js`,
+      entry: 'src/index.ts',
+      formats: ['iife'],
+      name: '__acp_plugin_init',
+      fileName: () => 'remoteEntry.js',
     },
     outDir: 'dist',
-    rollupOptions: {
-      external: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query', 'lucide-react'],
-      output: {
-        globals: {
-          react: 'React',
-          'react-dom': 'ReactDOM',
-        },
-      },
-    },
+    // No externals — bundle all dependencies so the plugin is self-contained.
+    // Browser native ES modules can't resolve bare specifiers like 'react'.
   },
 })

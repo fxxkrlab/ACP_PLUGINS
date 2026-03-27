@@ -17,5 +17,3 @@ const modules: Record<string, () => Promise<{ default: React.ComponentType }>> =
     return factory();
   },
 };
-
-export { MovieRequests, TmdbTab };
