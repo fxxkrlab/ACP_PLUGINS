@@ -1,49 +1,23 @@
-import axios from 'axios';
-
-const pluginApi = axios.create({
-  baseURL: '/api/v1/p/movie-request',
-  headers: { 'Content-Type': 'application/json' },
-});
-
 /**
- * Retrieve auth token from the host ADMINCHAT Panel app.
+ * Plugin API client.
  *
- * The panel stores its JWT in a Zustand persist store under the key
- * 'auth-storage'. We also check 'access_token' as a direct-storage
- * fallback so the plugin keeps working if the host app changes its
- * persistence strategy.
- *
- * TODO: Once the Plugin SDK ships a `getAuthToken()` helper, replace
- * this function with the SDK-provided solution.
+ * Uses the host Panel's authenticated axios instance which has JWT
+ * token management, automatic refresh on 401, and all interceptors.
+ * The host exposes it as window.__ACP_API.
  */
-function getAuthToken(): string | null {
-  try {
-    // Primary: Zustand persist store (ADMINCHAT Panel pattern)
-    const authData = JSON.parse(localStorage.getItem('auth-storage') || '{}');
-    const token = authData?.state?.token;
-    if (token) return token;
-  } catch {
-    // ignore parse errors
-  }
+const hostApi = (window as any).__ACP_API;
 
-  try {
-    // Fallback: direct token storage
-    const token = localStorage.getItem('access_token');
-    if (token) return token;
-  } catch {
-    // ignore errors
-  }
-
-  return null;
+if (!hostApi) {
+  console.warn('[movie-request] Host API not available, plugin API calls may fail');
 }
 
-// Attach auth token from parent app's localStorage
-pluginApi.interceptors.request.use((config) => {
-  const token = getAuthToken();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Wrapper: use host's axios but scope requests to plugin's base path
+const pluginApi = {
+  get: (url: string, config?: any) => hostApi.get(`/p/movie-request${url}`, config),
+  post: (url: string, data?: any, config?: any) => hostApi.post(`/p/movie-request${url}`, data, config),
+  put: (url: string, data?: any, config?: any) => hostApi.put(`/p/movie-request${url}`, data, config),
+  patch: (url: string, data?: any, config?: any) => hostApi.patch(`/p/movie-request${url}`, data, config),
+  delete: (url: string, config?: any) => hostApi.delete(`/p/movie-request${url}`, config),
+};
 
 export default pluginApi;
