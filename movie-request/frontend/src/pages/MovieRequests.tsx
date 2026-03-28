@@ -10,6 +10,8 @@ import {
   CheckCircle,
   XCircle,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import pluginApi from '../api';
 
@@ -49,7 +51,7 @@ interface PaginatedResponse {
   total_pages: number;
 }
 
-// API functions
+// API
 async function getMovieRequestStats(): Promise<MovieRequestStats> {
   const { data } = await pluginApi.get('/stats');
   return data.data;
@@ -72,52 +74,61 @@ async function updateMovieRequest(
   return data.data;
 }
 
-// Components
-function PluginHeader({ title }: { title: string }) {
-  return (
-    <div className="flex items-center h-14 px-8 border-b border-[var(--color-border-subtle)]">
-      <h1 className="text-lg font-semibold text-[var(--color-text-primary)] font-['Space_Grotesk']">{title}</h1>
-    </div>
-  );
-}
+// Inline styles using CSS variables (plugins can't use host Tailwind theme classes)
+const cv = (name: string) => `var(--color-${name})`;
 
 const STATUS_TABS = ['all', 'pending', 'fulfilled', 'rejected'] as const;
-type StatusTab = typeof STATUS_TABS[number];
+type StatusTab = (typeof STATUS_TABS)[number];
 
 function StatCard({
   label,
   value,
-  icon,
-  iconBg,
+  icon: Icon,
+  color,
 }: {
   label: string;
   value: number;
-  icon: React.ReactNode;
-  iconBg: string;
+  icon: React.ElementType;
+  color: string;
 }) {
   return (
-    <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] p-5">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono']">
+    <div
+      className="rounded-[10px] p-5"
+      style={{
+        background: cv('bg-card'),
+        border: `1px solid ${cv('border')}`,
+      }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <Icon size={18} style={{ color }} />
+        <span
+          className="text-[13px] font-medium font-['Inter']"
+          style={{ color: cv('text-secondary') }}
+        >
           {label}
         </span>
-        <div className={`p-1.5 rounded-md ${iconBg}`}>{icon}</div>
       </div>
-      <p className="text-2xl font-bold text-[var(--color-text-primary)] font-['Space_Grotesk']">{value}</p>
+      <span
+        className="text-[32px] font-bold font-['Space_Grotesk'] leading-none"
+        style={{ color }}
+      >
+        {value.toLocaleString()}
+      </span>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const config: Record<string, { bg: string; text: string; label: string }> = {
-    pending: { bg: 'bg-[var(--color-orange)]/10', text: 'text-[var(--color-orange)]', label: 'PENDING' },
-    fulfilled: { bg: 'bg-[var(--color-green)]/10', text: 'text-[var(--color-green)]', label: 'FULFILLED' },
-    rejected: { bg: 'bg-[var(--color-red)]/10', text: 'text-[var(--color-red)]', label: 'REJECTED' },
+  const config: Record<string, { color: string; label: string }> = {
+    pending: { color: cv('orange'), label: 'PENDING' },
+    fulfilled: { color: cv('green'), label: 'FULFILLED' },
+    rejected: { color: cv('red'), label: 'REJECTED' },
   };
   const c = config[status] || config.pending;
   return (
     <span
-      className={`text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded ${c.bg} ${c.text}`}
+      className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded"
+      style={{ color: c.color, background: `color-mix(in srgb, ${c.color} 10%, transparent)` }}
     >
       {c.label}
     </span>
@@ -126,7 +137,10 @@ function StatusBadge({ status }: { status: string }) {
 
 function MediaTypeBadge({ type }: { type: string }) {
   return (
-    <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-purple)]/10 text-[var(--color-purple)]">
+    <span
+      className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded"
+      style={{ color: cv('purple'), background: `color-mix(in srgb, ${cv('purple')} 10%, transparent)` }}
+    >
       {type.toUpperCase()}
     </span>
   );
@@ -178,101 +192,83 @@ export default function MovieRequests() {
 
   return (
     <div className="flex flex-col h-full">
-      <PluginHeader title="Movie Requests" />
+      {/* Header */}
+      <header className="px-8 pt-6 pb-0" style={{ background: cv('bg-page') }}>
+        <h1
+          className="text-[28px] font-bold font-['Space_Grotesk']"
+          style={{ color: cv('text-primary') }}
+        >
+          Movie Requests
+        </h1>
+        <p className="text-sm mt-0.5" style={{ color: cv('text-muted') }}>
+          Manage TMDB movie and TV show requests from users
+        </p>
+      </header>
+
       <div className="flex-1 px-8 py-6 overflow-auto">
-        {/* Stats cards */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          <StatCard
-            label="Total"
-            value={stats?.total ?? 0}
-            icon={<BarChart3 size={16} className="text-[var(--color-accent)]" />}
-            iconBg="bg-[var(--color-accent)]/10"
-          />
-          <StatCard
-            label="Pending"
-            value={stats?.pending ?? 0}
-            icon={<Clock size={16} className="text-[var(--color-orange)]" />}
-            iconBg="bg-[var(--color-orange)]/10"
-          />
-          <StatCard
-            label="Fulfilled"
-            value={stats?.fulfilled ?? 0}
-            icon={<CheckCircle size={16} className="text-[var(--color-green)]" />}
-            iconBg="bg-[var(--color-green)]/10"
-          />
-          <StatCard
-            label="Rejected"
-            value={stats?.rejected ?? 0}
-            icon={<XCircle size={16} className="text-[var(--color-red)]" />}
-            iconBg="bg-[var(--color-red)]/10"
-          />
+        {/* Stat cards */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <StatCard label="Total Received" value={stats?.total ?? 0} icon={BarChart3} color={cv('accent')} />
+          <StatCard label="Pending" value={stats?.pending ?? 0} icon={Clock} color={cv('orange')} />
+          <StatCard label="Fulfilled" value={stats?.fulfilled ?? 0} icon={CheckCircle} color={cv('green')} />
+          <StatCard label="Rejected" value={stats?.rejected ?? 0} icon={XCircle} color={cv('red')} />
         </div>
 
-        {/* Status filter tabs */}
-        <div className="flex items-center gap-6 mb-6 border-b border-[var(--color-border-subtle)]">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => {
-                setActiveTab(tab);
-                setPage(1);
-              }}
-              className={`pb-3 text-sm font-medium transition-colors relative capitalize ${
-                activeTab === tab
-                  ? 'text-[var(--color-accent)]'
-                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
-              }`}
-            >
-              {tab}
-              {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-accent)]" />
-              )}
-            </button>
-          ))}
+        {/* Tabs */}
+        <div className="flex items-center gap-6 mb-6" style={{ borderBottom: `1px solid ${cv('border-subtle')}` }}>
+          {STATUS_TABS.map((tab) => {
+            const isActive = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => { setActiveTab(tab); setPage(1); }}
+                className="pb-3 text-sm font-medium transition-colors relative capitalize"
+                style={{ color: isActive ? cv('accent') : cv('text-muted') }}
+              >
+                {tab}
+                {isActive && (
+                  <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: cv('accent') }} />
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Table */}
-        <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] overflow-hidden">
+        <div
+          className="rounded-[10px] overflow-hidden"
+          style={{ background: cv('bg-card'), border: `1px solid ${cv('border')}` }}
+        >
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[var(--color-border)]">
-                <th className="text-left text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3 w-16">
-                  Poster
-                </th>
-                <th className="text-left text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
-                  Title
-                </th>
-                <th className="text-left text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
-                  TMDB
-                </th>
-                <th className="text-center text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
-                  Rating
-                </th>
-                <th className="text-center text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
-                  Requests
-                </th>
-                <th className="text-center text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
-                  Library
-                </th>
-                <th className="text-center text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
-                  Status
-                </th>
-                <th className="text-right text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
-                  Actions
-                </th>
+              <tr style={{ borderBottom: `1px solid ${cv('border')}` }}>
+                {['Poster', 'Title', 'TMDB', 'Rating', 'Requests', 'Library', 'Status', 'Actions'].map(
+                  (h, i) => (
+                    <th
+                      key={h}
+                      className={`text-[11px] font-semibold uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3 ${
+                        i === 0 || i === 1 || i === 2 ? 'text-left' : i === 7 ? 'text-right' : 'text-center'
+                      }`}
+                      style={{ color: cv('text-muted'), width: i === 0 ? '60px' : undefined }}
+                    >
+                      {h}
+                    </th>
+                  )
+                )}
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12">
-                    <Loader2 className="w-6 h-6 text-[var(--color-text-muted)] animate-spin mx-auto" />
+                  <td colSpan={8} className="text-center py-16">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto" style={{ color: cv('text-muted') }} />
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-[var(--color-text-muted)] text-sm">
-                    No requests found
+                  <td colSpan={8} className="text-center py-16">
+                    <Film className="w-10 h-10 mx-auto mb-3" style={{ color: cv('text-placeholder') }} />
+                    <p className="text-sm" style={{ color: cv('text-muted') }}>No requests found</p>
                   </td>
                 </tr>
               ) : (
@@ -283,8 +279,13 @@ export default function MovieRequests() {
                       ? `https://www.themoviedb.org/movie/${req.tmdb_id}`
                       : `https://www.themoviedb.org/tv/${req.tmdb_id}`;
                   return (
-                    <tr key={req.id} className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-bg-elevated)]/50">
-                      {/* Poster */}
+                    <tr
+                      key={req.id}
+                      className="transition-colors"
+                      style={{ borderBottom: `1px solid ${cv('border-subtle')}` }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = `color-mix(in srgb, ${cv('bg-elevated')} 50%, transparent)`; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
                       <td className="px-5 py-3">
                         {req.poster_path ? (
                           <img
@@ -293,75 +294,93 @@ export default function MovieRequests() {
                             className="w-10 h-14 object-cover rounded"
                           />
                         ) : (
-                          <div className="w-10 h-14 bg-[var(--color-bg-elevated)] rounded flex items-center justify-center">
-                            <Film size={16} className="text-[var(--color-text-placeholder)]" />
+                          <div
+                            className="w-10 h-14 rounded flex items-center justify-center"
+                            style={{ background: cv('bg-elevated') }}
+                          >
+                            <Film size={16} style={{ color: cv('text-placeholder') }} />
                           </div>
                         )}
                       </td>
-                      {/* Title + year + type */}
                       <td className="px-5 py-3">
                         <div className="flex flex-col gap-1">
-                          <span className="text-sm text-[var(--color-text-primary)] font-medium truncate max-w-[240px]">
+                          <span
+                            className="text-sm font-medium truncate max-w-[240px]"
+                            style={{ color: cv('text-primary') }}
+                          >
                             {req.title}
                           </span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-[var(--color-text-muted)]">{year}</span>
+                            <span className="text-xs" style={{ color: cv('text-muted') }}>{year}</span>
                             <MediaTypeBadge type={req.media_type} />
                           </div>
                         </div>
                       </td>
-                      {/* TMDB link */}
                       <td className="px-5 py-3">
                         <a
                           href={tmdbUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline font-['JetBrains_Mono']"
+                          className="inline-flex items-center gap-1 text-xs hover:underline font-['JetBrains_Mono']"
+                          style={{ color: cv('accent') }}
                         >
                           {req.tmdb_id}
                           <ExternalLink size={10} />
                         </a>
                       </td>
-                      {/* Rating */}
                       <td className="px-5 py-3 text-center">
-                        <span className="text-sm text-[var(--color-text-primary)] font-['JetBrains_Mono']">
+                        <span className="text-sm font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>
                           {req.vote_average != null ? `\u2B50 ${Number(req.vote_average).toFixed(1)}` : '\u2014'}
                         </span>
                       </td>
-                      {/* Request count */}
                       <td className="px-5 py-3 text-center">
-                        <span className="text-sm text-[var(--color-text-primary)] font-['JetBrains_Mono']">
+                        <span
+                          className="text-sm font-semibold font-['Space_Grotesk']"
+                          style={{ color: cv('accent') }}
+                        >
                           {req.request_count}
                         </span>
                       </td>
-                      {/* In library */}
                       <td className="px-5 py-3 text-center">
                         {req.in_library ? (
-                          <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-green)]/10 text-[var(--color-green)]">
+                          <span
+                            className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded"
+                            style={{ color: cv('green'), background: `color-mix(in srgb, ${cv('green')} 10%, transparent)` }}
+                          >
                             YES
                           </span>
                         ) : (
-                          <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)]">
+                          <span
+                            className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded"
+                            style={{ color: cv('text-muted'), background: cv('bg-elevated') }}
+                          >
                             NO
                           </span>
                         )}
                       </td>
-                      {/* Status */}
                       <td className="px-5 py-3 text-center">
                         <StatusBadge status={req.status} />
                       </td>
-                      {/* Actions */}
                       <td className="px-5 py-3 text-right">
                         {req.status === 'pending' && (
-                          <div className="flex items-center gap-2 justify-end">
+                          <div className="flex items-center gap-1 justify-end">
                             {mutatingId === req.id ? (
-                              <Loader2 size={16} className="text-[var(--color-text-muted)] animate-spin" />
+                              <Loader2 size={16} className="animate-spin" style={{ color: cv('text-muted') }} />
                             ) : (
                               <>
                                 <button
                                   onClick={() => mutation.mutate({ id: req.id, status: 'fulfilled' })}
                                   disabled={mutatingId !== null}
-                                  className="p-1.5 rounded-md hover:bg-[var(--color-green)]/10 text-[var(--color-text-muted)] hover:text-[var(--color-green)] transition-colors disabled:opacity-30"
+                                  className="p-1.5 rounded-md transition-all disabled:opacity-30"
+                                  style={{ color: cv('text-muted') }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = cv('green');
+                                    e.currentTarget.style.background = `color-mix(in srgb, ${cv('green')} 10%, transparent)`;
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = cv('text-muted');
+                                    e.currentTarget.style.background = 'transparent';
+                                  }}
                                   title="Fulfill"
                                 >
                                   <Check size={16} />
@@ -369,7 +388,16 @@ export default function MovieRequests() {
                                 <button
                                   onClick={() => mutation.mutate({ id: req.id, status: 'rejected' })}
                                   disabled={mutatingId !== null}
-                                  className="p-1.5 rounded-md hover:bg-[var(--color-red)]/10 text-[var(--color-text-muted)] hover:text-[var(--color-red)] transition-colors disabled:opacity-30"
+                                  className="p-1.5 rounded-md transition-all disabled:opacity-30"
+                                  style={{ color: cv('text-muted') }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.color = cv('red');
+                                    e.currentTarget.style.background = `color-mix(in srgb, ${cv('red')} 10%, transparent)`;
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.color = cv('text-muted');
+                                    e.currentTarget.style.background = 'transparent';
+                                  }}
                                   title="Reject"
                                 >
                                   <X size={16} />
@@ -390,26 +418,30 @@ export default function MovieRequests() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-4">
-            <span className="text-xs text-[var(--color-text-muted)]">
+            <span className="text-xs" style={{ color: cv('text-muted') }}>
               {total} total results
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="px-3 py-1.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)] transition-colors disabled:opacity-30"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-30"
+                style={{ color: cv('text-secondary'), border: `1px solid ${cv('border')}` }}
               >
+                <ChevronLeft size={14} />
                 Previous
               </button>
-              <span className="text-xs text-[var(--color-text-secondary)] font-['JetBrains_Mono']">
+              <span className="text-xs font-['JetBrains_Mono']" style={{ color: cv('text-secondary') }}>
                 {page} / {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="px-3 py-1.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)] transition-colors disabled:opacity-30"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs font-medium transition-colors disabled:opacity-30"
+                style={{ color: cv('text-secondary'), border: `1px solid ${cv('border')}` }}
               >
                 Next
+                <ChevronRight size={14} />
               </button>
             </div>
           </div>
