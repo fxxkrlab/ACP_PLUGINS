@@ -11,6 +11,36 @@ import {
 } from 'lucide-react';
 import pluginApi from '../api';
 
+const cv = (name: string) => `var(--color-${name})`;
+
+// Shared input style
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  height: 40,
+  padding: '0 14px',
+  background: cv('bg-elevated'),
+  border: `1px solid ${cv('border')}`,
+  borderRadius: 8,
+  fontSize: 14,
+  color: cv('text-primary'),
+  outline: 'none',
+  fontFamily: "'JetBrains Mono', monospace",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: 12,
+  color: cv('text-muted'),
+  marginBottom: 6,
+};
+
+const cardStyle: React.CSSProperties = {
+  background: cv('bg-card'),
+  border: `1px solid ${cv('border')}`,
+  borderRadius: 10,
+  padding: 20,
+};
+
 // Types
 interface TmdbApiKey {
   id: number;
@@ -42,128 +72,78 @@ interface MediaLibraryConfig {
   updated_at: string;
 }
 
-// API functions
+// API
 async function getTmdbKeys(): Promise<{ items: TmdbApiKey[] }> {
   const { data } = await pluginApi.get('/tmdb-keys');
   return data.data;
 }
-
-async function createTmdbKey(body: {
-  name: string;
-  api_key: string;
-  access_token?: string;
-}): Promise<{ id: number; name: string }> {
+async function createTmdbKey(body: { name: string; api_key: string; access_token?: string }) {
   const { data } = await pluginApi.post('/tmdb-keys', body);
   return data.data;
 }
-
-async function deleteTmdbKey(id: number): Promise<void> {
-  await pluginApi.delete(`/tmdb-keys/${id}`);
-}
-
+async function deleteTmdbKey(id: number) { await pluginApi.delete(`/tmdb-keys/${id}`); }
 async function getMediaLibraryConfig(): Promise<MediaLibraryConfig | null> {
   const { data } = await pluginApi.get('/media-library');
   return data.data;
 }
-
-async function saveMediaLibraryConfig(body: {
-  name: string;
-  db_type: string;
-  host: string;
-  port?: number;
-  database: string;
-  username: string;
-  password: string;
-  table_name: string;
-  tmdb_id_column: string;
-  media_type_column?: string;
-}): Promise<{ id: number; name: string }> {
+async function saveMediaLibraryConfig(body: Record<string, unknown>) {
   const { data } = await pluginApi.post('/media-library', body);
   return data.data;
 }
-
-async function deleteMediaLibraryConfig(): Promise<void> {
-  await pluginApi.delete('/media-library');
-}
-
-async function testMediaLibraryConfig(): Promise<{ success: boolean; message: string }> {
+async function deleteMediaLibraryConfig() { await pluginApi.delete('/media-library'); }
+async function testMediaLibraryConfig() {
   const { data } = await pluginApi.post('/media-library/test');
-  return data.data;
+  return data.data as { success: boolean; message: string };
 }
 
-// ──────────────────────────────────────────────
-//  Media Library Section
-// ──────────────────────────────────────────────
+function Badge({ label, color }: { label: string; color: string }) {
+  return (
+    <span
+      className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded"
+      style={{ color, background: `color-mix(in srgb, ${color} 10%, transparent)` }}
+    >
+      {label}
+    </span>
+  );
+}
 
+// ── Media Library Section ──
 function MediaLibrarySection() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
-    name: '',
-    db_type: 'postgresql' as string,
-    host: '',
-    port: '',
-    database: '',
-    username: '',
-    password: '',
-    table_name: '',
-    tmdb_id_column: 'tmdb_id',
-    media_type_column: '',
+    name: '', db_type: 'postgresql', host: '', port: '', database: '',
+    username: '', password: '', table_name: '', tmdb_id_column: 'tmdb_id', media_type_column: '',
   });
 
-  const { data: config, isLoading } = useQuery({
-    queryKey: ['media-library-config'],
-    queryFn: getMediaLibraryConfig,
-  });
-
+  const { data: config, isLoading } = useQuery({ queryKey: ['media-library-config'], queryFn: getMediaLibraryConfig });
   const saveMutation = useMutation({
-    mutationFn: () =>
-      saveMediaLibraryConfig({
-        ...form,
-        port: form.port ? Number(form.port) : undefined,
-        media_type_column: form.media_type_column || undefined,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['media-library-config'] });
-      setShowForm(false);
-    },
+    mutationFn: () => saveMediaLibraryConfig({ ...form, port: form.port ? Number(form.port) : undefined, media_type_column: form.media_type_column || undefined }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['media-library-config'] }); setShowForm(false); },
   });
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteMediaLibraryConfig,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library-config'] }),
-  });
-
-  const testMutation = useMutation({
-    mutationFn: testMediaLibraryConfig,
-  });
-
-  const updateForm = (key: string, value: string) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const deleteMutation = useMutation({ mutationFn: deleteMediaLibraryConfig, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library-config'] }) });
+  const testMutation = useMutation({ mutationFn: testMediaLibraryConfig });
+  const u = (key: string, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
   return (
     <div className="space-y-4 mt-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-[18px] font-semibold text-[var(--color-text-primary)] font-['Space_Grotesk']">Media Library Database</h3>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            Optional: connect to an external database to check if a title is already in your media library.
-            If not configured, all requests are forwarded to the admin panel.
-          </p>
-        </div>
+      <div>
+        <h3 className="text-[18px] font-semibold font-['Space_Grotesk']" style={{ color: cv('text-primary') }}>Media Library Database</h3>
+        <p className="text-xs mt-1" style={{ color: cv('text-muted') }}>
+          Optional: connect to an external database to check if a title is already in your media library.
+        </p>
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
-          <Loader2 className="w-5 h-5 text-[var(--color-text-muted)] animate-spin" />
+          <Loader2 className="w-5 h-5 animate-spin" style={{ color: cv('text-muted') }} />
         </div>
       ) : config ? (
-        /* Show current config */
-        <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] p-5 space-y-3">
+        <div style={cardStyle} className="space-y-3">
           <div className="flex items-start justify-between">
             <div>
-              <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{config.name}</h4>
-              <p className="text-xs text-[var(--color-text-muted)] font-['JetBrains_Mono'] mt-1">
+              <h4 className="text-sm font-medium" style={{ color: cv('text-primary') }}>{config.name}</h4>
+              <p className="text-xs font-['JetBrains_Mono'] mt-1" style={{ color: cv('text-muted') }}>
                 {config.db_type.toUpperCase()} @ {config.host}:{config.port || (config.db_type === 'postgresql' ? 5432 : 3306)} / {config.database}
               </p>
             </div>
@@ -171,7 +151,8 @@ function MediaLibrarySection() {
               <button
                 onClick={() => testMutation.mutate()}
                 disabled={testMutation.isPending}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-[var(--color-accent)] border border-[var(--color-accent)]/20 hover:bg-[var(--color-accent)]/10 transition-colors disabled:opacity-40"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-40"
+                style={{ color: cv('accent'), border: `1px solid color-mix(in srgb, ${cv('accent')} 20%, transparent)` }}
               >
                 {testMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <FlaskConical size={12} />}
                 Test
@@ -179,111 +160,78 @@ function MediaLibrarySection() {
               <button
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
-                className="p-1.5 rounded-md hover:bg-[var(--color-red)]/10 text-[var(--color-text-muted)] hover:text-[var(--color-red)] transition-colors"
-                title="Remove config"
+                className="p-1.5 rounded-md transition-colors"
+                style={{ color: cv('text-muted') }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = cv('red'); }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = cv('text-muted'); }}
               >
                 <Trash2 size={14} />
               </button>
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3 text-xs">
-            <div>
-              <span className="text-[var(--color-text-muted)]">Table:</span>{' '}
-              <span className="text-[var(--color-text-primary)] font-['JetBrains_Mono']">{config.table_name}</span>
-            </div>
-            <div>
-              <span className="text-[var(--color-text-muted)]">TMDB ID Column:</span>{' '}
-              <span className="text-[var(--color-text-primary)] font-['JetBrains_Mono']">{config.tmdb_id_column}</span>
-            </div>
-            <div>
-              <span className="text-[var(--color-text-muted)]">Type Column:</span>{' '}
-              <span className="text-[var(--color-text-primary)] font-['JetBrains_Mono']">{config.media_type_column || '\u2014'}</span>
-            </div>
+            {[['Table', config.table_name], ['TMDB ID Column', config.tmdb_id_column], ['Type Column', config.media_type_column || '\u2014']].map(([l, v]) => (
+              <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
+            ))}
           </div>
-          {config.is_active && (
-            <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-green)]/10 text-[var(--color-green)]">
-              ACTIVE
-            </span>
-          )}
+          {config.is_active && <Badge label="ACTIVE" color={cv('green')} />}
           {testMutation.data && (
-            <p className={`text-xs font-['JetBrains_Mono'] ${testMutation.data.success ? 'text-[var(--color-green)]' : 'text-[var(--color-red)]'}`}>
+            <p className="text-xs font-['JetBrains_Mono']" style={{ color: testMutation.data.success ? cv('green') : cv('red') }}>
               {testMutation.data.message}
             </p>
           )}
         </div>
-      ) : (
-        /* No config -- show add button or form */
-        !showForm ? (
-          <button
-            onClick={() => setShowForm(true)}
-            className="w-full py-6 bg-[var(--color-bg-card)] border border-dashed border-[var(--color-border)] rounded-[10px] text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] hover:border-[var(--color-accent)]/30 transition-colors"
-          >
-            <Database size={20} className="mx-auto mb-2 opacity-50" />
-            Configure External Media Library
-          </button>
-        ) : null
-      )}
+      ) : !showForm ? (
+        <button
+          onClick={() => setShowForm(true)}
+          className="w-full py-6 rounded-[10px] text-sm transition-colors"
+          style={{ background: cv('bg-card'), border: `1px dashed ${cv('border')}`, color: cv('text-muted') }}
+        >
+          <Database size={20} className="mx-auto mb-2 opacity-50" />
+          Configure External Media Library
+        </button>
+      ) : null}
 
-      {/* Config form */}
       {showForm && !config && (
-        <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] p-5 space-y-4">
+        <div style={cardStyle} className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Name</label>
-              <input type="text" value={form.name} onChange={(e) => updateForm('name', e.target.value)} placeholder="My Media Server" className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Database Type</label>
-              <select value={form.db_type} onChange={(e) => updateForm('db_type', e.target.value)} className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-accent)] transition-colors">
-                <option value="postgresql">PostgreSQL</option>
-                <option value="mysql">MySQL</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Host</label>
-              <input type="text" value={form.host} onChange={(e) => updateForm('host', e.target.value)} placeholder="192.168.1.100" className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
+            {[['Name', 'name', 'My Media Server'], ['Database Type', 'db_type', ''], ['Host', 'host', '192.168.1.100']].map(([label, key, ph]) => (
+              <div key={key}>
+                <label style={labelStyle}>{label}</label>
+                {key === 'db_type' ? (
+                  <select value={form.db_type} onChange={(e) => u('db_type', e.target.value)} style={inputStyle}>
+                    <option value="postgresql">PostgreSQL</option>
+                    <option value="mysql">MySQL</option>
+                  </select>
+                ) : (
+                  <input type="text" value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
+                )}
+              </div>
+            ))}
           </div>
           <div className="grid grid-cols-4 gap-4">
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Port</label>
-              <input type="text" value={form.port} onChange={(e) => updateForm('port', e.target.value)} placeholder={form.db_type === 'postgresql' ? '5432' : '3306'} className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Database</label>
-              <input type="text" value={form.database} onChange={(e) => updateForm('database', e.target.value)} placeholder="media_db" className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Username</label>
-              <input type="text" value={form.username} onChange={(e) => updateForm('username', e.target.value)} placeholder="db_user" className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Password</label>
-              <input type="password" value={form.password} onChange={(e) => updateForm('password', e.target.value)} placeholder="********" className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
+            {[['Port', 'port', form.db_type === 'postgresql' ? '5432' : '3306'], ['Database', 'database', 'media_db'], ['Username', 'username', 'db_user'], ['Password', 'password', '********']].map(([label, key, ph]) => (
+              <div key={key}>
+                <label style={labelStyle}>{label}</label>
+                <input type={key === 'password' ? 'password' : 'text'} value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
+              </div>
+            ))}
           </div>
           <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Table Name</label>
-              <input type="text" value={form.table_name} onChange={(e) => updateForm('table_name', e.target.value)} placeholder="movies" className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">TMDB ID Column</label>
-              <input type="text" value={form.tmdb_id_column} onChange={(e) => updateForm('tmdb_id_column', e.target.value)} placeholder="tmdb_id" className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
-            <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Media Type Column (optional)</label>
-              <input type="text" value={form.media_type_column} onChange={(e) => updateForm('media_type_column', e.target.value)} placeholder="media_type" className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors" />
-            </div>
+            {[['Table Name', 'table_name', 'movies'], ['TMDB ID Column', 'tmdb_id_column', 'tmdb_id'], ['Media Type Column', 'media_type_column', 'media_type']].map(([label, key, ph]) => (
+              <div key={key}>
+                <label style={labelStyle}>{label}{key === 'media_type_column' ? ' (optional)' : ''}</label>
+                <input type="text" value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
+              </div>
+            ))}
           </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)] transition-colors">
-              Cancel
-            </button>
+            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors" style={{ color: cv('text-secondary'), border: `1px solid ${cv('border')}` }}>Cancel</button>
             <button
               onClick={() => saveMutation.mutate()}
               disabled={!form.name || !form.host || !form.database || !form.username || !form.password || !form.table_name || !form.tmdb_id_column || saveMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[var(--color-accent)] text-black text-xs font-medium rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-black text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-30"
+              style={{ background: cv('accent') }}
             >
               {saveMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
               Save
@@ -295,10 +243,7 @@ function MediaLibrarySection() {
   );
 }
 
-// ──────────────────────────────────────────────
-//  Main TMDB Tab (exported as default)
-// ──────────────────────────────────────────────
-
+// ── Main TMDB Tab ──
 export default function TmdbTab() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -306,93 +251,51 @@ export default function TmdbTab() {
   const [formApiKey, setFormApiKey] = useState('');
   const [formAccessToken, setFormAccessToken] = useState('');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['tmdb-keys'],
-    queryFn: getTmdbKeys,
-  });
-
+  const { data, isLoading } = useQuery({ queryKey: ['tmdb-keys'], queryFn: getTmdbKeys });
   const addMutation = useMutation({
-    mutationFn: () =>
-      createTmdbKey({
-        name: formName,
-        api_key: formApiKey,
-        access_token: formAccessToken || undefined,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tmdb-keys'] });
-      setShowForm(false);
-      setFormName('');
-      setFormApiKey('');
-      setFormAccessToken('');
-    },
+    mutationFn: () => createTmdbKey({ name: formName, api_key: formApiKey, access_token: formAccessToken || undefined }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tmdb-keys'] }); setShowForm(false); setFormName(''); setFormApiKey(''); setFormAccessToken(''); },
   });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => deleteTmdbKey(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tmdb-keys'] }),
-  });
+  const deleteMutation = useMutation({ mutationFn: (id: number) => deleteTmdbKey(id), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tmdb-keys'] }) });
 
   const keys: TmdbApiKey[] = data?.items || [];
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-[18px] font-semibold text-[var(--color-text-primary)] font-['Space_Grotesk']">TMDB API Keys</h3>
+        <h3 className="text-[18px] font-semibold font-['Space_Grotesk']" style={{ color: cv('text-primary') }}>TMDB API Keys</h3>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-[var(--color-accent)]/10 text-[var(--color-accent)] hover:bg-[var(--color-accent)]/20 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+          style={{ color: cv('accent'), background: `color-mix(in srgb, ${cv('accent')} 10%, transparent)` }}
         >
-          <Plus size={14} />
-          Add Key
+          <Plus size={14} /> Add Key
         </button>
       </div>
 
-      {/* Add form */}
       {showForm && (
-        <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] p-5 space-y-4">
+        <div style={cardStyle} className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Name</label>
-              <input
-                type="text"
-                value={formName}
-                onChange={(e) => setFormName(e.target.value)}
-                placeholder="My TMDB Key"
-                className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] focus:outline-none focus:border-[var(--color-accent)] transition-colors"
-              />
+              <label style={labelStyle}>Name</label>
+              <input type="text" value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="My TMDB Key" style={{ ...inputStyle, fontFamily: "'Inter', sans-serif" }} />
             </div>
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">API Key</label>
-              <input
-                type="text"
-                value={formApiKey}
-                onChange={(e) => setFormApiKey(e.target.value)}
-                placeholder="API key"
-                className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors"
-              />
+              <label style={labelStyle}>API Key</label>
+              <input type="text" value={formApiKey} onChange={(e) => setFormApiKey(e.target.value)} placeholder="API key" style={inputStyle} />
             </div>
             <div>
-              <label className="block text-xs text-[var(--color-text-muted)] mb-1.5">Access Token (optional)</label>
-              <input
-                type="text"
-                value={formAccessToken}
-                onChange={(e) => setFormAccessToken(e.target.value)}
-                placeholder="Bearer token"
-                className="w-full h-10 px-3.5 bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-lg text-sm text-[var(--color-text-primary)] placeholder:text-[var(--color-text-placeholder)] font-['JetBrains_Mono'] focus:outline-none focus:border-[var(--color-accent)] transition-colors"
-              />
+              <label style={labelStyle}>Access Token (optional)</label>
+              <input type="text" value={formAccessToken} onChange={(e) => setFormAccessToken(e.target.value)} placeholder="Bearer token" style={inputStyle} />
             </div>
           </div>
           <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setShowForm(false)}
-              className="px-3 py-1.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)] transition-colors"
-            >
-              Cancel
-            </button>
+            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors" style={{ color: cv('text-secondary'), border: `1px solid ${cv('border')}` }}>Cancel</button>
             <button
               onClick={() => addMutation.mutate()}
               disabled={!formName || !formApiKey || addMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[var(--color-accent)] text-black text-xs font-medium rounded-md hover:opacity-90 transition-opacity disabled:opacity-30"
+              className="inline-flex items-center gap-1.5 px-4 py-1.5 text-black text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-30"
+              style={{ background: cv('accent') }}
             >
               {addMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
               Add
@@ -401,63 +304,50 @@ export default function TmdbTab() {
         </div>
       )}
 
-      {/* Key cards */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 text-[var(--color-text-muted)] animate-spin" />
+          <Loader2 className="w-6 h-6 animate-spin" style={{ color: cv('text-muted') }} />
         </div>
       ) : keys.length === 0 ? (
-        <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] p-8 text-center">
-          <Key size={24} className="text-[var(--color-text-placeholder)] mx-auto mb-2" />
-          <p className="text-sm text-[var(--color-text-muted)]">No TMDB API keys configured</p>
+        <div style={cardStyle} className="text-center py-4">
+          <Key size={24} className="mx-auto mb-2" style={{ color: cv('text-placeholder') }} />
+          <p className="text-sm" style={{ color: cv('text-muted') }}>No TMDB API keys configured</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-4">
           {keys.map((k) => (
-            <div
-              key={k.id}
-              className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] p-5"
-            >
+            <div key={k.id} style={cardStyle}>
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{k.name}</h4>
-                  <p className="text-xs text-[var(--color-text-muted)] font-['JetBrains_Mono'] mt-1">{k.api_key_masked}</p>
+                  <h4 className="text-sm font-medium" style={{ color: cv('text-primary') }}>{k.name}</h4>
+                  <p className="text-xs font-['JetBrains_Mono'] mt-1" style={{ color: cv('text-muted') }}>{k.api_key_masked}</p>
                 </div>
                 <button
                   onClick={() => deleteMutation.mutate(k.id)}
                   disabled={deleteMutation.isPending}
-                  className="p-1.5 rounded-md hover:bg-[var(--color-red)]/10 text-[var(--color-text-muted)] hover:text-[var(--color-red)] transition-colors"
-                  title="Delete key"
+                  className="p-1.5 rounded-md transition-colors"
+                  style={{ color: cv('text-muted') }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = cv('red'); }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = cv('text-muted'); }}
                 >
                   <Trash2 size={14} />
                 </button>
               </div>
               <div className="flex items-center gap-3">
                 {k.is_active ? (
-                  k.is_rate_limited ? (
-                    <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-orange)]/10 text-[var(--color-orange)]">
-                      RATE LIMITED
-                    </span>
-                  ) : (
-                    <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-green)]/10 text-[var(--color-green)]">
-                      ACTIVE
-                    </span>
-                  )
+                  k.is_rate_limited
+                    ? <Badge label="RATE LIMITED" color={cv('orange')} />
+                    : <Badge label="ACTIVE" color={cv('green')} />
                 ) : (
-                  <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)]">
-                    INACTIVE
-                  </span>
+                  <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded" style={{ color: cv('text-muted'), background: cv('bg-elevated') }}>INACTIVE</span>
                 )}
-                <span className="text-[10px] text-[var(--color-text-muted)] font-['JetBrains_Mono']">
-                  {k.request_count} requests
-                </span>
+                <span className="text-[10px] font-['JetBrains_Mono']" style={{ color: cv('text-muted') }}>{k.request_count} requests</span>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Media Library Config */}
       <MediaLibrarySection />
     </div>
   );
