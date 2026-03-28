@@ -75,8 +75,8 @@ async function updateMovieRequest(
 // Components
 function PluginHeader({ title }: { title: string }) {
   return (
-    <div className="flex items-center h-14 px-8 border-b border-[#1A1A1A]">
-      <h1 className="text-lg font-semibold text-white font-['Space_Grotesk']">{title}</h1>
+    <div className="flex items-center h-14 px-8 border-b border-[var(--color-border-subtle)]">
+      <h1 className="text-lg font-semibold text-[var(--color-text-primary)] font-['Space_Grotesk']">{title}</h1>
     </div>
   );
 }
@@ -96,23 +96,23 @@ function StatCard({
   iconBg: string;
 }) {
   return (
-    <div className="bg-[#0A0A0A] border border-[#2f2f2f] rounded-[10px] p-5">
+    <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] p-5">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono']">
+        <span className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono']">
           {label}
         </span>
         <div className={`p-1.5 rounded-md ${iconBg}`}>{icon}</div>
       </div>
-      <p className="text-2xl font-bold text-white font-['Space_Grotesk']">{value}</p>
+      <p className="text-2xl font-bold text-[var(--color-text-primary)] font-['Space_Grotesk']">{value}</p>
     </div>
   );
 }
 
 function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { bg: string; text: string; label: string }> = {
-    pending: { bg: 'bg-[#FF8800]/10', text: 'text-[#FF8800]', label: 'PENDING' },
-    fulfilled: { bg: 'bg-[#059669]/10', text: 'text-[#059669]', label: 'FULFILLED' },
-    rejected: { bg: 'bg-[#FF4444]/10', text: 'text-[#FF4444]', label: 'REJECTED' },
+    pending: { bg: 'bg-[var(--color-orange)]/10', text: 'text-[var(--color-orange)]', label: 'PENDING' },
+    fulfilled: { bg: 'bg-[var(--color-green)]/10', text: 'text-[var(--color-green)]', label: 'FULFILLED' },
+    rejected: { bg: 'bg-[var(--color-red)]/10', text: 'text-[var(--color-red)]', label: 'REJECTED' },
   };
   const c = config[status] || config.pending;
   return (
@@ -126,7 +126,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function MediaTypeBadge({ type }: { type: string }) {
   return (
-    <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[#8B5CF6]/10 text-[#8B5CF6]">
+    <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-purple)]/10 text-[var(--color-purple)]">
       {type.toUpperCase()}
     </span>
   );
@@ -185,31 +185,31 @@ export default function MovieRequests() {
           <StatCard
             label="Total"
             value={stats?.total ?? 0}
-            icon={<BarChart3 size={16} className="text-[#00D9FF]" />}
-            iconBg="bg-[#00D9FF]/10"
+            icon={<BarChart3 size={16} className="text-[var(--color-accent)]" />}
+            iconBg="bg-[var(--color-accent)]/10"
           />
           <StatCard
             label="Pending"
             value={stats?.pending ?? 0}
-            icon={<Clock size={16} className="text-[#FF8800]" />}
-            iconBg="bg-[#FF8800]/10"
+            icon={<Clock size={16} className="text-[var(--color-orange)]" />}
+            iconBg="bg-[var(--color-orange)]/10"
           />
           <StatCard
             label="Fulfilled"
             value={stats?.fulfilled ?? 0}
-            icon={<CheckCircle size={16} className="text-[#059669]" />}
-            iconBg="bg-[#059669]/10"
+            icon={<CheckCircle size={16} className="text-[var(--color-green)]" />}
+            iconBg="bg-[var(--color-green)]/10"
           />
           <StatCard
             label="Rejected"
             value={stats?.rejected ?? 0}
-            icon={<XCircle size={16} className="text-[#FF4444]" />}
-            iconBg="bg-[#FF4444]/10"
+            icon={<XCircle size={16} className="text-[var(--color-red)]" />}
+            iconBg="bg-[var(--color-red)]/10"
           />
         </div>
 
         {/* Status filter tabs */}
-        <div className="flex items-center gap-6 mb-6 border-b border-[#1A1A1A]">
+        <div className="flex items-center gap-6 mb-6 border-b border-[var(--color-border-subtle)]">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab}
@@ -219,45 +219,45 @@ export default function MovieRequests() {
               }}
               className={`pb-3 text-sm font-medium transition-colors relative capitalize ${
                 activeTab === tab
-                  ? 'text-[#00D9FF]'
-                  : 'text-[#6a6a6a] hover:text-white'
+                  ? 'text-[var(--color-accent)]'
+                  : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]'
               }`}
             >
               {tab}
               {activeTab === tab && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#00D9FF]" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-accent)]" />
               )}
             </button>
           ))}
         </div>
 
         {/* Table */}
-        <div className="bg-[#0A0A0A] border border-[#2f2f2f] rounded-[10px] overflow-hidden">
+        <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-[10px] overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[#2f2f2f]">
-                <th className="text-left text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3 w-16">
+              <tr className="border-b border-[var(--color-border)]">
+                <th className="text-left text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3 w-16">
                   Poster
                 </th>
-                <th className="text-left text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
+                <th className="text-left text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
                   Title
                 </th>
-                <th className="text-left text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
+                <th className="text-left text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
                   TMDB
                 </th>
-                <th className="text-center text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
+                <th className="text-center text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
                   Rating
                 </th>
-                <th className="text-center text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
+                <th className="text-center text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
                   Requests
                 </th>
-                <th className="text-center text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
+                <th className="text-center text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
                   Library
                 </th>
-                <th className="text-center text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
+                <th className="text-center text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
                   Status
                 </th>
-                <th className="text-right text-[11px] font-semibold text-[#6a6a6a] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
+                <th className="text-right text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-[0.5px] font-['JetBrains_Mono'] px-5 py-3">
                   Actions
                 </th>
               </tr>
@@ -266,12 +266,12 @@ export default function MovieRequests() {
               {isLoading ? (
                 <tr>
                   <td colSpan={8} className="text-center py-12">
-                    <Loader2 className="w-6 h-6 text-[#6a6a6a] animate-spin mx-auto" />
+                    <Loader2 className="w-6 h-6 text-[var(--color-text-muted)] animate-spin mx-auto" />
                   </td>
                 </tr>
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-[#6a6a6a] text-sm">
+                  <td colSpan={8} className="text-center py-12 text-[var(--color-text-muted)] text-sm">
                     No requests found
                   </td>
                 </tr>
@@ -283,7 +283,7 @@ export default function MovieRequests() {
                       ? `https://www.themoviedb.org/movie/${req.tmdb_id}`
                       : `https://www.themoviedb.org/tv/${req.tmdb_id}`;
                   return (
-                    <tr key={req.id} className="border-b border-[#1A1A1A] hover:bg-[#141414]/50">
+                    <tr key={req.id} className="border-b border-[var(--color-border-subtle)] hover:bg-[var(--color-bg-elevated)]/50">
                       {/* Poster */}
                       <td className="px-5 py-3">
                         {req.poster_path ? (
@@ -293,19 +293,19 @@ export default function MovieRequests() {
                             className="w-10 h-14 object-cover rounded"
                           />
                         ) : (
-                          <div className="w-10 h-14 bg-[#141414] rounded flex items-center justify-center">
-                            <Film size={16} className="text-[#4a4a4a]" />
+                          <div className="w-10 h-14 bg-[var(--color-bg-elevated)] rounded flex items-center justify-center">
+                            <Film size={16} className="text-[var(--color-text-placeholder)]" />
                           </div>
                         )}
                       </td>
                       {/* Title + year + type */}
                       <td className="px-5 py-3">
                         <div className="flex flex-col gap-1">
-                          <span className="text-sm text-white font-medium truncate max-w-[240px]">
+                          <span className="text-sm text-[var(--color-text-primary)] font-medium truncate max-w-[240px]">
                             {req.title}
                           </span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-[#6a6a6a]">{year}</span>
+                            <span className="text-xs text-[var(--color-text-muted)]">{year}</span>
                             <MediaTypeBadge type={req.media_type} />
                           </div>
                         </div>
@@ -316,7 +316,7 @@ export default function MovieRequests() {
                           href={tmdbUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs text-[#00D9FF] hover:underline font-['JetBrains_Mono']"
+                          className="inline-flex items-center gap-1 text-xs text-[var(--color-accent)] hover:underline font-['JetBrains_Mono']"
                         >
                           {req.tmdb_id}
                           <ExternalLink size={10} />
@@ -324,24 +324,24 @@ export default function MovieRequests() {
                       </td>
                       {/* Rating */}
                       <td className="px-5 py-3 text-center">
-                        <span className="text-sm text-white font-['JetBrains_Mono']">
+                        <span className="text-sm text-[var(--color-text-primary)] font-['JetBrains_Mono']">
                           {req.vote_average != null ? `\u2B50 ${Number(req.vote_average).toFixed(1)}` : '\u2014'}
                         </span>
                       </td>
                       {/* Request count */}
                       <td className="px-5 py-3 text-center">
-                        <span className="text-sm text-white font-['JetBrains_Mono']">
+                        <span className="text-sm text-[var(--color-text-primary)] font-['JetBrains_Mono']">
                           {req.request_count}
                         </span>
                       </td>
                       {/* In library */}
                       <td className="px-5 py-3 text-center">
                         {req.in_library ? (
-                          <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[#059669]/10 text-[#059669]">
+                          <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-green)]/10 text-[var(--color-green)]">
                             YES
                           </span>
                         ) : (
-                          <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[#141414] text-[#6a6a6a]">
+                          <span className="text-[10px] font-semibold font-['JetBrains_Mono'] px-2 py-0.5 rounded bg-[var(--color-bg-elevated)] text-[var(--color-text-muted)]">
                             NO
                           </span>
                         )}
@@ -355,13 +355,13 @@ export default function MovieRequests() {
                         {req.status === 'pending' && (
                           <div className="flex items-center gap-2 justify-end">
                             {mutatingId === req.id ? (
-                              <Loader2 size={16} className="text-[#6a6a6a] animate-spin" />
+                              <Loader2 size={16} className="text-[var(--color-text-muted)] animate-spin" />
                             ) : (
                               <>
                                 <button
                                   onClick={() => mutation.mutate({ id: req.id, status: 'fulfilled' })}
                                   disabled={mutatingId !== null}
-                                  className="p-1.5 rounded-md hover:bg-[#059669]/10 text-[#6a6a6a] hover:text-[#059669] transition-colors disabled:opacity-30"
+                                  className="p-1.5 rounded-md hover:bg-[var(--color-green)]/10 text-[var(--color-text-muted)] hover:text-[var(--color-green)] transition-colors disabled:opacity-30"
                                   title="Fulfill"
                                 >
                                   <Check size={16} />
@@ -369,7 +369,7 @@ export default function MovieRequests() {
                                 <button
                                   onClick={() => mutation.mutate({ id: req.id, status: 'rejected' })}
                                   disabled={mutatingId !== null}
-                                  className="p-1.5 rounded-md hover:bg-[#FF4444]/10 text-[#6a6a6a] hover:text-[#FF4444] transition-colors disabled:opacity-30"
+                                  className="p-1.5 rounded-md hover:bg-[var(--color-red)]/10 text-[var(--color-text-muted)] hover:text-[var(--color-red)] transition-colors disabled:opacity-30"
                                   title="Reject"
                                 >
                                   <X size={16} />
@@ -390,24 +390,24 @@ export default function MovieRequests() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between mt-4">
-            <span className="text-xs text-[#6a6a6a]">
+            <span className="text-xs text-[var(--color-text-muted)]">
               {total} total results
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="px-3 py-1.5 rounded-md text-xs font-medium text-[#8a8a8a] border border-[#2f2f2f] hover:bg-[#141414] transition-colors disabled:opacity-30"
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)] transition-colors disabled:opacity-30"
               >
                 Previous
               </button>
-              <span className="text-xs text-[#8a8a8a] font-['JetBrains_Mono']">
+              <span className="text-xs text-[var(--color-text-secondary)] font-['JetBrains_Mono']">
                 {page} / {totalPages}
               </span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="px-3 py-1.5 rounded-md text-xs font-medium text-[#8a8a8a] border border-[#2f2f2f] hover:bg-[#141414] transition-colors disabled:opacity-30"
+                className="px-3 py-1.5 rounded-md text-xs font-medium text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-[var(--color-bg-elevated)] transition-colors disabled:opacity-30"
               >
                 Next
               </button>
