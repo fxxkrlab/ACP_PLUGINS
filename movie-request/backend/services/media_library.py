@@ -191,8 +191,13 @@ async def check_in_library(
         engine = _get_engine(cfg)
 
         async with engine.connect() as conn:
-            query_str = f'SELECT 1 FROM "{cfg.table_name}" WHERE "{cfg.tmdb_id_column}" = :tmdb_id'
-            params: dict = {"tmdb_id": tmdb_id}
+            # Cast tmdb_id to string as well — some media library DBs store
+            # TMDB IDs as VARCHAR/TEXT rather than INTEGER. asyncpg does strict
+            # type checking and refuses int→str implicit casts. Using
+            # ``CAST(:tmdb_id AS TEXT)`` on both sides makes the comparison
+            # work regardless of the column's actual type.
+            query_str = f'SELECT 1 FROM "{cfg.table_name}" WHERE CAST("{cfg.tmdb_id_column}" AS TEXT) = CAST(:tmdb_id AS TEXT)'
+            params: dict = {"tmdb_id": str(tmdb_id)}
 
             if cfg.media_type_column:
                 query_str += f' AND "{cfg.media_type_column}" = :media_type'

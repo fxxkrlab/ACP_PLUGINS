@@ -399,12 +399,12 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
                 preview = _build_movie_request(tmdb_data, media_type, tmdb_id, True)
                 sent = await _send_reply_card(
                     message, preview,
-                    status_override="\u2705 <b>Already in your library</b>",
+                    status_override="\u2705 <b>已在媒体库中</b>",
                 )
                 async with async_session_factory() as outsess:
                     await _log_outbound(
                         outsess, conv.id, bot_db_id,
-                        text=_render_caption(preview, status_override="✅ Already in your library"),
+                        text=_render_caption(preview, status_override="✅ 已在媒体库中"),
                         tg_message_id=getattr(sent, "message_id", None),
                         reply_to_message_id=message.message_id,
                     )
@@ -721,11 +721,11 @@ def _render_caption(
     if status_override:
         status_line = status_override
     elif req.in_library:
-        status_line = "\u2705 <b>Already in your library</b>"
+        status_line = "\u2705 <b>已在媒体库中</b>"
     elif is_duplicate:
-        status_line = f"\U0001f504 <b>{req.request_count} users have requested this</b>"
+        status_line = f"\U0001f504 <b>{req.request_count} 人已求过此片</b>"
     else:
-        status_line = "\u23f3 <b>Request submitted</b>"
+        status_line = "\u23f3 <b>求片已提交</b>"
 
     # Links
     tmdb_link = f"https://www.themoviedb.org/{'tv' if is_tv else 'movie'}/{req.tmdb_id}"
