@@ -116,4 +116,8 @@ class MediaLibraryConfig(Base, TimestampMixin):
     table_name: Mapped[str] = mapped_column(String(100), nullable=False)
     tmdb_id_column: Mapped[str] = mapped_column(String(100), nullable=False)
     media_type_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # API-mode fields (used when db_type="api")
+    api_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    api_auth_header: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    api_response_path: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)

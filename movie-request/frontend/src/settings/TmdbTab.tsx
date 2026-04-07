@@ -59,14 +59,17 @@ interface MediaLibraryConfig {
   id: number;
   name: string;
   db_type: string;
-  host: string;
+  host?: string;
   port?: number;
-  database: string;
-  username: string;
-  password_masked: string;
-  table_name: string;
-  tmdb_id_column: string;
+  database?: string;
+  username?: string;
+  password_masked?: string;
+  table_name?: string;
+  tmdb_id_column?: string;
   media_type_column?: string;
+  api_url?: string;
+  api_auth_header_masked?: string;
+  api_response_path?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -114,11 +117,31 @@ function MediaLibrarySection() {
   const [form, setForm] = useState({
     name: '', db_type: 'postgresql', host: '', port: '', database: '',
     username: '', password: '', table_name: '', tmdb_id_column: 'tmdb_id', media_type_column: '',
+    api_url: '', api_auth_header: '', api_response_path: 'exists',
   });
+
+  const isApi = form.db_type === 'api';
 
   const { data: config, isLoading } = useQuery({ queryKey: ['media-library-config'], queryFn: getMediaLibraryConfig });
   const saveMutation = useMutation({
-    mutationFn: () => saveMediaLibraryConfig({ ...form, port: form.port ? Number(form.port) : undefined, media_type_column: form.media_type_column || undefined }),
+    mutationFn: () => {
+      const payload: Record<string, unknown> = { name: form.name, db_type: form.db_type };
+      if (isApi) {
+        payload.api_url = form.api_url;
+        payload.api_auth_header = form.api_auth_header || undefined;
+        payload.api_response_path = form.api_response_path || 'exists';
+      } else {
+        payload.host = form.host;
+        payload.port = form.port ? Number(form.port) : undefined;
+        payload.database = form.database;
+        payload.username = form.username;
+        payload.password = form.password;
+        payload.table_name = form.table_name;
+        payload.tmdb_id_column = form.tmdb_id_column;
+        payload.media_type_column = form.media_type_column || undefined;
+      }
+      return saveMediaLibraryConfig(payload);
+    },
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['media-library-config'] }); setShowForm(false); },
   });
   const deleteMutation = useMutation({ mutationFn: deleteMediaLibraryConfig, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library-config'] }) });
@@ -128,9 +151,9 @@ function MediaLibrarySection() {
   return (
     <div className="space-y-4 mt-8">
       <div>
-        <h3 className="text-[18px] font-semibold font-['Space_Grotesk']" style={{ color: cv('text-primary') }}>Media Library Database</h3>
+        <h3 className="text-[18px] font-semibold font-['Space_Grotesk']" style={{ color: cv('text-primary') }}>Media Library Check</h3>
         <p className="text-xs mt-1" style={{ color: cv('text-muted') }}>
-          Optional: connect to an external database to check if a title is already in your media library.
+          Optional: connect to an external database or API to check if a title is already in your media library.
         </p>
       </div>
 
@@ -144,7 +167,10 @@ function MediaLibrarySection() {
             <div>
               <h4 className="text-sm font-medium" style={{ color: cv('text-primary') }}>{config.name}</h4>
               <p className="text-xs font-['JetBrains_Mono'] mt-1" style={{ color: cv('text-muted') }}>
-                {config.db_type.toUpperCase()} @ {config.host}:{config.port || (config.db_type === 'postgresql' ? 5432 : 3306)} / {config.database}
+                {config.db_type === 'api'
+                  ? `API @ ${config.api_url?.substring(0, 60) || '—'}${(config.api_url?.length || 0) > 60 ? '…' : ''}`
+                  : `${config.db_type.toUpperCase()} @ ${config.host}:${config.port || (config.db_type === 'postgresql' ? 5432 : 3306)} / ${config.database}`
+                }
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -170,9 +196,14 @@ function MediaLibrarySection() {
             </div>
           </div>
           <div className="grid grid-cols-3 gap-3 text-xs">
-            {[['Table', config.table_name], ['TMDB ID Column', config.tmdb_id_column], ['Type Column', config.media_type_column || '\u2014']].map(([l, v]) => (
-              <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
-            ))}
+            {config.db_type === 'api'
+              ? [['Response Field', config.api_response_path || 'exists'], ['Auth', config.api_auth_header_masked || '\u2014'], ['Type', 'HTTP API']].map(([l, v]) => (
+                  <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
+                ))
+              : [['Table', config.table_name || '\u2014'], ['TMDB ID Column', config.tmdb_id_column || '\u2014'], ['Type Column', config.media_type_column || '\u2014']].map(([l, v]) => (
+                  <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
+                ))
+            }
           </div>
           {config.is_active && <Badge label="ACTIVE" color={cv('green')} />}
           {testMutation.data && (
@@ -194,42 +225,76 @@ function MediaLibrarySection() {
 
       {showForm && !config && (
         <div style={cardStyle} className="space-y-4">
+          {/* Row 1: Name + Type */}
           <div className="grid grid-cols-3 gap-4">
-            {[['Name', 'name', 'My Media Server'], ['Database Type', 'db_type', ''], ['Host', 'host', '192.168.1.100']].map(([label, key, ph]) => (
-              <div key={key}>
-                <label style={labelStyle}>{label}</label>
-                {key === 'db_type' ? (
-                  <select value={form.db_type} onChange={(e) => u('db_type', e.target.value)} style={inputStyle}>
-                    <option value="postgresql">PostgreSQL</option>
-                    <option value="mysql">MySQL</option>
-                  </select>
-                ) : (
-                  <input type="text" value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
-                )}
+            <div>
+              <label style={labelStyle}>Name</label>
+              <input type="text" value={form.name} onChange={(e) => u('name', e.target.value)} placeholder="My Media Server" style={{ ...inputStyle, fontFamily: "'Inter', sans-serif" }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Connection Type</label>
+              <select value={form.db_type} onChange={(e) => u('db_type', e.target.value)} style={inputStyle}>
+                <option value="postgresql">PostgreSQL</option>
+                <option value="mysql">MySQL</option>
+                <option value="api">HTTP API</option>
+              </select>
+            </div>
+            {!isApi && (
+              <div>
+                <label style={labelStyle}>Host</label>
+                <input type="text" value={form.host} onChange={(e) => u('host', e.target.value)} placeholder="192.168.1.100" style={inputStyle} />
               </div>
-            ))}
+            )}
           </div>
-          <div className="grid grid-cols-4 gap-4">
-            {[['Port', 'port', form.db_type === 'postgresql' ? '5432' : '3306'], ['Database', 'database', 'media_db'], ['Username', 'username', 'db_user'], ['Password', 'password', '********']].map(([label, key, ph]) => (
-              <div key={key}>
-                <label style={labelStyle}>{label}</label>
-                <input type={key === 'password' ? 'password' : 'text'} value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
+
+          {isApi ? (
+            <>
+              {/* API-mode fields */}
+              <div>
+                <label style={labelStyle}>API URL <span style={{ color: cv('text-placeholder') }}>(use {'{tmdb_id}'} and optionally {'{media_type}'} as placeholders)</span></label>
+                <input type="text" value={form.api_url} onChange={(e) => u('api_url', e.target.value)} placeholder="https://api.example.com/library/check?tmdb_id={tmdb_id}&type={media_type}" style={inputStyle} />
               </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            {[['Table Name', 'table_name', 'movies'], ['TMDB ID Column', 'tmdb_id_column', 'tmdb_id'], ['Media Type Column', 'media_type_column', 'media_type']].map(([label, key, ph]) => (
-              <div key={key}>
-                <label style={labelStyle}>{label}{key === 'media_type_column' ? ' (optional)' : ''}</label>
-                <input type="text" value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label style={labelStyle}>Auth Token <span style={{ color: cv('text-placeholder') }}>(optional, sent as Authorization header)</span></label>
+                  <input type="password" value={form.api_auth_header} onChange={(e) => u('api_auth_header', e.target.value)} placeholder="Bearer your-secret-token" style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Response Field <span style={{ color: cv('text-placeholder') }}>(JSON path to boolean)</span></label>
+                  <input type="text" value={form.api_response_path} onChange={(e) => u('api_response_path', e.target.value)} placeholder="exists" style={inputStyle} />
+                </div>
               </div>
-            ))}
-          </div>
+              <p className="text-[11px] font-['JetBrains_Mono']" style={{ color: cv('text-placeholder') }}>
+                Expected: GET request returns JSON. Example: {'{"exists": true}'} with Response Field = "exists"
+              </p>
+            </>
+          ) : (
+            <>
+              {/* DB-mode fields */}
+              <div className="grid grid-cols-4 gap-4">
+                {[['Port', 'port', form.db_type === 'postgresql' ? '5432' : '3306'], ['Database', 'database', 'media_db'], ['Username', 'username', 'db_user'], ['Password', 'password', '********']].map(([label, key, ph]) => (
+                  <div key={key}>
+                    <label style={labelStyle}>{label}</label>
+                    <input type={key === 'password' ? 'password' : 'text'} value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                {[['Table Name', 'table_name', 'movies'], ['TMDB ID Column', 'tmdb_id_column', 'tmdb_id'], ['Media Type Column', 'media_type_column', 'media_type']].map(([label, key, ph]) => (
+                  <div key={key}>
+                    <label style={labelStyle}>{label}{key === 'media_type_column' ? ' (optional)' : ''}</label>
+                    <input type="text" value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
           <div className="flex justify-end gap-2">
             <button onClick={() => setShowForm(false)} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors" style={{ color: cv('text-secondary'), border: `1px solid ${cv('border')}` }}>Cancel</button>
             <button
               onClick={() => saveMutation.mutate()}
-              disabled={!form.name || !form.host || !form.database || !form.username || !form.password || !form.table_name || !form.tmdb_id_column || saveMutation.isPending}
+              disabled={!form.name || (isApi ? !form.api_url : (!form.host || !form.database || !form.username || !form.password || !form.table_name || !form.tmdb_id_column)) || saveMutation.isPending}
               className="inline-flex items-center gap-1.5 px-4 py-1.5 text-black text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-30"
               style={{ background: cv('accent') }}
             >

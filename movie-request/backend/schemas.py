@@ -85,29 +85,37 @@ class MovieRequestStats(BaseModel):
 
 class MediaLibraryConfigCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    db_type: str = Field(..., pattern=r"^(postgresql|mysql)$")
-    host: str = Field(..., min_length=1, max_length=200)
+    db_type: str = Field(..., pattern=r"^(postgresql|mysql|api)$")
+    # DB-mode fields (postgresql / mysql)
+    host: Optional[str] = Field(default=None, max_length=200)
     port: Optional[int] = Field(default=None, ge=1, le=65535)
-    database: str = Field(..., min_length=1, max_length=100)
-    username: str = Field(..., min_length=1, max_length=100)
-    password: str = Field(..., min_length=1, max_length=200)
-    table_name: str = Field(..., min_length=1, max_length=100)
-    tmdb_id_column: str = Field(..., min_length=1, max_length=100)
+    database: Optional[str] = Field(default=None, max_length=100)
+    username: Optional[str] = Field(default=None, max_length=100)
+    password: Optional[str] = Field(default=None, max_length=200)
+    table_name: Optional[str] = Field(default=None, max_length=100)
+    tmdb_id_column: Optional[str] = Field(default=None, max_length=100)
     media_type_column: Optional[str] = Field(default=None, max_length=100)
+    # API-mode fields
+    api_url: Optional[str] = Field(default=None, max_length=500)
+    api_auth_header: Optional[str] = Field(default=None, max_length=500)
+    api_response_path: Optional[str] = Field(default=None, max_length=100)
 
 
 class MediaLibraryConfigOut(BaseModel):
     id: int
     name: str
     db_type: str
-    host: str
+    host: Optional[str] = None
     port: Optional[int] = None
-    database: str
-    username: str
-    password_masked: str
-    table_name: str
-    tmdb_id_column: str
+    database: Optional[str] = None
+    username: Optional[str] = None
+    password_masked: Optional[str] = None
+    table_name: Optional[str] = None
+    tmdb_id_column: Optional[str] = None
     media_type_column: Optional[str] = None
+    api_url: Optional[str] = None
+    api_auth_header_masked: Optional[str] = None
+    api_response_path: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

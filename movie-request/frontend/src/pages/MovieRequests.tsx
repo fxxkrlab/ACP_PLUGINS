@@ -5,6 +5,7 @@ import {
   Loader2,
   Check,
   X,
+  Trash2,
   ExternalLink,
   Clock,
   CheckCircle,
@@ -72,6 +73,10 @@ async function updateMovieRequest(
 ): Promise<MovieRequest> {
   const { data } = await pluginApi.patch(`/${id}`, body);
   return data.data;
+}
+
+async function deleteMovieRequest(id: number): Promise<void> {
+  await pluginApi.delete(`/${id}`);
 }
 
 // Inline styles using CSS variables (plugins can't use host Tailwind theme classes)
@@ -180,6 +185,23 @@ export default function MovieRequests() {
     },
     onError: (error: Error) => {
       console.error('Failed to update request:', error.message);
+    },
+    onSettled: () => {
+      setMutatingId(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => {
+      setMutatingId(id);
+      return deleteMovieRequest(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['movie-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['movie-request-stats'] });
+    },
+    onError: (error: Error) => {
+      console.error('Failed to delete request:', error.message);
     },
     onSettled: () => {
       setMutatingId(null);
@@ -404,6 +426,23 @@ export default function MovieRequests() {
                                 </button>
                               </>
                             )}
+                            <button
+                              onClick={() => { if (confirm('Delete this request permanently?')) deleteMutation.mutate(req.id); }}
+                              disabled={mutatingId !== null}
+                              className="p-1.5 rounded-md transition-all disabled:opacity-30"
+                              style={{ color: cv('text-muted') }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.color = cv('red');
+                                e.currentTarget.style.background = `color-mix(in srgb, ${cv('red')} 10%, transparent)`;
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.color = cv('text-muted');
+                                e.currentTarget.style.background = 'transparent';
+                              }}
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
                         )}
                       </td>

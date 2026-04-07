@@ -47,6 +47,13 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.15 (2026-04-08)
+- **Feature**: Delete movie requests — new `DELETE /{request_id}` endpoint + trash icon button in the admin requests table (with confirmation dialog)
+- **Feature**: API-mode media library check — select "HTTP API" as connection type to check if a tmdb_id exists via an external REST API endpoint. Supports custom URL with `{tmdb_id}` / `{media_type}` placeholders, optional Authorization header, and configurable JSON response field path.
+- **Feature**: New DB migration `003_add_api_media_library` adds `api_url`, `api_auth_header`, `api_response_path` columns and makes DB-specific fields nullable for API mode.
+- **UI**: Settings tab renamed from "TMDB Keys" to "Request Config" to reflect the broader scope (TMDB keys + media library config)
+- **UI**: Media Library section header changed to "Media Library Check", description updated to mention API option
+
 ### 1.0.14 (2026-04-07)
 - **Fix (CRITICAL)**: Confirm/Cancel callbacks failed silently with `TypeError: missing required argument 'bot_db_id'` because Panel < 1.1.5 only injected bot context on the message observer, not callback_query. The handler now declares `bot_db_id` as optional so it works on older Panels too. Requires Panel >= **1.1.5** for full functionality (logs outbound messages).
 - **UI**: TMDB / IMDB links moved ABOVE the status line, so the action prompt ("❓ 是否确认求片？") sits at the very bottom, right next to the inline buttons it refers to.

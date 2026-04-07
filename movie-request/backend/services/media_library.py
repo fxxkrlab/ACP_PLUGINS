@@ -1,18 +1,24 @@
 """
 Remote media library checker.
-Connects to a user-configured external database (MySQL or PostgreSQL)
-to check if a given tmdb_id already exists in their media library.
+Connects to a user-configured external database (MySQL / PostgreSQL)
+or HTTP API to check if a given tmdb_id already exists in their media library.
 
-If no external DB is configured, always returns False (not in library),
+If no external config is set up, always returns False (not in library),
 and the request is forwarded to the admin panel as usual.
+
+Supported db_type values:
+- ``postgresql`` — async query via asyncpg
+- ``mysql`` — async query via aiomysql
+- ``api`` — HTTP GET with optional auth header; checks a JSON response field
 """
 from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import quote_plus
 
+import httpx
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, AsyncEngine
 
@@ -84,6 +90,66 @@ async def dispose_engines() -> None:
     _engine_dsn_cache.clear()
 
 
+def _resolve_json_path(data: Any, path: str) -> Any:
+    """Navigate a dot-separated path into a JSON-decoded dict.
+
+    Example::
+        _resolve_json_path({"data": {"exists": True}}, "data.exists")
+        # → True
+    """
+    for key in path.split("."):
+        if isinstance(data, dict):
+            data = data.get(key)
+        else:
+            return None
+    return data
+
+
+async def _check_via_api(
+    cfg: MediaLibraryConfig,
+    tmdb_id: int,
+    media_type: str,
+) -> bool:
+    """Check media library via an external HTTP API.
+
+    The configured ``api_url`` may contain ``{tmdb_id}`` and ``{media_type}``
+    placeholders that are replaced before the request is sent. The response
+    must be JSON; the field at ``api_response_path`` is tested for truthiness.
+
+    Example configuration::
+
+        api_url:           https://api.example.com/library/check?tmdb_id={tmdb_id}&type={media_type}
+        api_auth_header:   Bearer my-secret-token
+        api_response_path: exists
+
+    Expected API response: ``{"exists": true}``
+    """
+    url = (cfg.api_url or "").replace("{tmdb_id}", str(tmdb_id)).replace("{media_type}", media_type)
+    if not url:
+        logger.error("api_url is empty for media library config %d", cfg.id)
+        return False
+
+    headers: dict[str, str] = {}
+    if cfg.api_auth_header:
+        headers["Authorization"] = cfg.api_auth_header
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        field_path = cfg.api_response_path or "exists"
+        value = _resolve_json_path(data, field_path)
+        return bool(value)
+
+    except Exception:
+        logger.exception(
+            "API media library check failed (url=%s, tmdb_id=%s)", url, tmdb_id
+        )
+        return False
+
+
 async def check_in_library(
     session: AsyncSession,
     tmdb_id: int,
@@ -92,20 +158,29 @@ async def check_in_library(
     """
     Check if a title exists in the remote media library.
 
+    Supports three backends:
+    - ``postgresql`` / ``mysql``: direct SQL query via async engine
+    - ``api``: HTTP GET with optional auth header + JSON response field check
+
     Returns False if:
     - No MediaLibraryConfig is configured/active
-    - The external DB is unreachable
-    - The tmdb_id is not found in the specified table
+    - The external DB/API is unreachable
+    - The tmdb_id is not found
     """
     cfg = await _get_config(session)
     if cfg is None:
         return False
 
+    # ── API mode ──
+    if cfg.db_type == "api":
+        return await _check_via_api(cfg, tmdb_id, media_type)
+
+    # ── Database mode ──
     # Validate identifiers to prevent SQL injection
-    if not _validate_identifier(cfg.table_name):
+    if not cfg.table_name or not _validate_identifier(cfg.table_name):
         logger.error("Invalid table_name: %s", cfg.table_name)
         return False
-    if not _validate_identifier(cfg.tmdb_id_column):
+    if not cfg.tmdb_id_column or not _validate_identifier(cfg.tmdb_id_column):
         logger.error("Invalid tmdb_id_column: %s", cfg.tmdb_id_column)
         return False
     if cfg.media_type_column and not _validate_identifier(cfg.media_type_column):
@@ -116,8 +191,6 @@ async def check_in_library(
         engine = _get_engine(cfg)
 
         async with engine.connect() as conn:
-            # Build safe query using quoted identifiers
-            # The table_name, tmdb_id_column, media_type_column are admin-configured
             query_str = f'SELECT 1 FROM "{cfg.table_name}" WHERE "{cfg.tmdb_id_column}" = :tmdb_id'
             params: dict = {"tmdb_id": tmdb_id}
 

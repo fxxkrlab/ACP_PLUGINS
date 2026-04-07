@@ -205,10 +205,13 @@ async def get_media_library_config(
         port=cfg.port,
         database=cfg.database,
         username=cfg.username,
-        password_masked=_mask_key(cfg.password),
+        password_masked=_mask_key(cfg.password) if cfg.password else None,
         table_name=cfg.table_name,
         tmdb_id_column=cfg.tmdb_id_column,
         media_type_column=cfg.media_type_column,
+        api_url=cfg.api_url,
+        api_auth_header_masked=_mask_key(cfg.api_auth_header) if cfg.api_auth_header else None,
+        api_response_path=cfg.api_response_path,
         is_active=cfg.is_active,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
@@ -239,6 +242,9 @@ async def save_media_library_config(
         table_name=body.table_name,
         tmdb_id_column=body.tmdb_id_column,
         media_type_column=body.media_type_column,
+        api_url=body.api_url,
+        api_auth_header=body.api_auth_header,
+        api_response_path=body.api_response_path,
         is_active=True,
     )
     db.add(cfg)
@@ -337,3 +343,22 @@ async def update_request(
 
     await db.flush()
     return APIResponse(data=MovieRequestOut.model_validate(req).model_dump())
+
+
+@router.delete("/{request_id:int}", response_model=APIResponse)
+async def delete_request(
+    request_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: Annotated[Admin, Depends(require_admin)],
+) -> APIResponse:
+    """Delete a movie request and its associated user records."""
+    result = await db.execute(
+        select(MovieRequest).where(MovieRequest.id == request_id)
+    )
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    await db.delete(req)
+    await db.flush()
+    return APIResponse(message="Request deleted")

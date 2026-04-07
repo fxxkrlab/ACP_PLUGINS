@@ -1,7 +1,7 @@
 {
   "id": "movie-request",
   "name": "TMDB Movie Request",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "TMDB movie/TV request system with multi-key rotation and media library check",
   "author": {
     "name": "NovaHelix",
@@ -48,7 +48,7 @@
     "settings_tabs": [
       {
         "key": "tmdb",
-        "label": "TMDB Keys",
+        "label": "Request Config",
         "module": "./settings/TmdbTab"
       }
     ]
