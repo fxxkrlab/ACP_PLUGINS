@@ -69,6 +69,7 @@ interface MediaLibraryConfig {
   tmdb_id_column?: string;
   media_type_column?: string;
   name_column?: string;
+  path_column?: string;
   is_dir_column?: string;
   trashed_column?: string;
   api_url?: string;
@@ -133,6 +134,7 @@ interface MLFormState {
   tmdb_id_column: string;
   media_type_column: string;
   name_column: string;
+  path_column: string;
   is_dir_column: string;
   trashed_column: string;
   api_url: string;
@@ -143,7 +145,7 @@ interface MLFormState {
 const _emptyMLForm = (): MLFormState => ({
   name: '', db_type: 'postgresql', host: '', port: '', database: '',
   username: '', password: '', table_name: '', tmdb_id_column: 'tmdb_id', media_type_column: '',
-  name_column: '', is_dir_column: '', trashed_column: '',
+  name_column: '', path_column: '', is_dir_column: '', trashed_column: '',
   api_url: '', api_auth_header: '', api_response_path: 'exists',
 });
 
@@ -159,6 +161,7 @@ const _formFromConfig = (cfg: MediaLibraryConfig): MLFormState => ({
   tmdb_id_column: cfg.tmdb_id_column || '',
   media_type_column: cfg.media_type_column || '',
   name_column: cfg.name_column || '',
+  path_column: cfg.path_column || '',
   is_dir_column: cfg.is_dir_column || '',
   trashed_column: cfg.trashed_column || '',
   api_url: cfg.api_url || '',
@@ -183,6 +186,7 @@ const _formToPayload = (form: MLFormState): Record<string, unknown> => {
     payload.tmdb_id_column = form.tmdb_id_column;
     payload.media_type_column = form.media_type_column || undefined;
     payload.name_column = form.name_column || undefined;
+    payload.path_column = form.path_column || undefined;
     payload.is_dir_column = form.is_dir_column || undefined;
     payload.trashed_column = form.trashed_column || undefined;
   }
@@ -278,8 +282,8 @@ function MediaLibraryForm({
             <p className="text-[11px] font-['JetBrains_Mono'] mb-2" style={{ color: cv('text-placeholder') }}>
               Optional — fill these to enable <b>version detail</b> (1080p × 1, 4K DoVi × 1, S01: E01-E26):
             </p>
-            <div className="grid grid-cols-3 gap-4">
-              {[['Name Column', 'name_column', 'name'], ['Is-Dir Column', 'is_dir_column', 'is_dir'], ['Trashed Column', 'trashed_column', 'trashed']].map(([label, key, ph]) => (
+            <div className="grid grid-cols-4 gap-4">
+              {[['Name Column', 'name_column', 'name'], ['Path Column', 'path_column', 'path'], ['Is-Dir Column', 'is_dir_column', 'is_dir'], ['Trashed Column', 'trashed_column', 'trashed']].map(([label, key, ph]) => (
                 <div key={key}>
                   <label style={labelStyle}>{label} (optional)</label>
                   <input type="text" value={(form as unknown as Record<string, string>)[key]} onChange={(e) => u(key as keyof MLFormState, e.target.value)} placeholder={ph} style={inputStyle} />
@@ -382,12 +386,12 @@ function MediaLibraryConfigCard({ config }: { config: MediaLibraryConfig }) {
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-3 text-xs">
+      <div className="grid grid-cols-4 gap-3 text-xs">
         {config.db_type === 'api'
-          ? [['Response Field', config.api_response_path || 'exists'], ['Auth', config.api_auth_header_masked || '\u2014'], ['Type', 'HTTP API']].map(([l, v]) => (
-              <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
+          ? [['Response Field', config.api_response_path || 'exists'], ['Auth', config.api_auth_header_masked || '\u2014'], ['Type', 'HTTP API'], ['', '']].map(([l, v], i) => (
+              l ? <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div> : <div key={i} />
             ))
-          : [['Table', config.table_name || '\u2014'], ['TMDB ID Column', config.tmdb_id_column || '\u2014'], ['Name Column', config.name_column || '\u2014 (bool only)']].map(([l, v]) => (
+          : [['Table', config.table_name || '\u2014'], ['TMDB ID', config.tmdb_id_column || '\u2014'], ['Name Col', config.name_column || '\u2014'], ['Path Col', config.path_column || '\u2014']].map(([l, v]) => (
               <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
             ))
         }

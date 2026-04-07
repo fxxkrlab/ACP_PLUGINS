@@ -47,6 +47,16 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.22 (2026-04-08)
+- **Feature**: Path-based fallback query — when the `tmdb` column is empty (common for older seasons), the plugin now also queries by `path LIKE '%[tmdbid=XXX]%'`. This recovers 647K+ files that were invisible before because the strm system didn't populate their tmdb field.
+- **Feature**: Media-type filtering at path level — prevents tmdb_id collisions (e.g. `/movie/4614` = 惊天核网 vs `/tv/4614` = NCIS). TV queries only match files under `/Season NN/` subdirectories; movie queries exclude Season folders.
+- **Feature**: Separated display — TV shows now show a "📺 剧集 (N季)" header with per-season episode ranges, while standalone files (movies/specials) show under "📀 其他版本".
+- **Backend**: New optional config field `path_column` (migration 006). New `_build_common_filters` / `_validate_cfg_identifiers` helpers reduce duplication. `_check_via_db` refactored into two-step query.
+- **Code quality**: All SQL identifiers validated via `_validate_cfg_identifiers()` before any query. No unused imports. Identifier quoting consistent.
+
+### 1.0.21 (2026-04-08)
+- **Fix**: Strip HTML tags from web chat outbound log to fix ReactMarkdown rendering overlap
+
 ### 1.0.20 (2026-04-08)
 - **Fix**: Group conversations no longer split across multiple chat windows when a user interacts with different bots from the same pool (`_upsert_panel_conversation` now matches by `(tg_user_id, source_type="group")` without `primary_bot_id` filter for group chats)
 

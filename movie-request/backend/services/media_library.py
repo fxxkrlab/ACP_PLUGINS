@@ -311,78 +311,149 @@ async def _check_via_api(
         return info
 
 
+def _validate_cfg_identifiers(cfg: MediaLibraryConfig) -> bool:
+    """Validate all configured SQL identifiers. Returns False on any failure."""
+    for attr, label in [
+        ("table_name", "table_name"),
+        ("tmdb_id_column", "tmdb_id_column"),
+        ("media_type_column", "media_type_column"),
+        ("name_column", "name_column"),
+        ("path_column", "path_column"),
+        ("is_dir_column", "is_dir_column"),
+        ("trashed_column", "trashed_column"),
+    ]:
+        value = getattr(cfg, attr, None)
+        if value and not _validate_identifier(value):
+            logger.error("Invalid %s on cfg %d: %s", label, cfg.id, value)
+            return False
+    # Required fields must be present
+    if not (cfg.table_name and cfg.tmdb_id_column):
+        logger.error("Missing table_name or tmdb_id_column on cfg %d", cfg.id)
+        return False
+    return True
+
+
+_VIDEO_EXT_SQL = r"\.(mkv|mp4|avi|wmv|ts|m2ts|mpg|flv|webm|rmvb|rm|mov|m4v)$"
+
+
+def _build_common_filters(cfg: MediaLibraryConfig) -> str:
+    """Build the reusable WHERE fragments for is_dir, trashed, video ext."""
+    parts: list[str] = []
+    if cfg.is_dir_column:
+        parts.append(f' AND "{cfg.is_dir_column}" = false')
+    if cfg.trashed_column:
+        parts.append(f' AND "{cfg.trashed_column}" = false')
+    if cfg.name_column:
+        parts.append(
+            f' AND lower("{cfg.name_column}") ~ \'{_VIDEO_EXT_SQL}\''
+        )
+    return "".join(parts)
+
+
 async def _check_via_db(
     cfg: MediaLibraryConfig,
     tmdb_id: int,
     media_type: str,
 ) -> dict[str, Any]:
-    """DB mode: SQL query for filenames → parse versions + episodes."""
+    """DB mode: two-step query for filenames → parse versions + episodes.
+
+    Step 1 — **tmdb column match**: ``WHERE tmdb = :id`` (fast, indexed).
+    Step 2 — **path-based fallback**: if ``path_column`` is configured and
+    step 1 returned few results, also query files whose ``path`` contains
+    ``[tmdbid=XXX]``. This catches files where the strm system didn't
+    populate the tmdb column (common for older seasons of long-running
+    TV shows).
+
+    Media-type filtering at the path level prevents tmdb-ID collisions
+    (e.g. ``/movie/4614`` vs ``/tv/4614`` are two different titles):
+
+    * ``media_type == "tv"``: only files whose path contains ``/Season ``
+    * ``media_type == "movie"``: only files whose path does NOT contain
+      ``/Season `` (standalone releases, not episode files).
+    """
     info = _empty_library_info()
 
-    # Identifier validation
-    if not _validate_identifier(cfg.table_name or ''):
-        logger.error("Invalid table_name on cfg %d: %s", cfg.id, cfg.table_name)
-        return info
-    if not _validate_identifier(cfg.tmdb_id_column or ''):
-        logger.error("Invalid tmdb_id_column on cfg %d: %s", cfg.id, cfg.tmdb_id_column)
-        return info
-    if cfg.media_type_column and not _validate_identifier(cfg.media_type_column):
-        logger.error("Invalid media_type_column on cfg %d: %s", cfg.id, cfg.media_type_column)
-        return info
-    if cfg.name_column and not _validate_identifier(cfg.name_column):
-        logger.error("Invalid name_column on cfg %d: %s", cfg.id, cfg.name_column)
-        return info
-    if cfg.is_dir_column and not _validate_identifier(cfg.is_dir_column):
-        logger.error("Invalid is_dir_column on cfg %d: %s", cfg.id, cfg.is_dir_column)
-        return info
-    if cfg.trashed_column and not _validate_identifier(cfg.trashed_column):
-        logger.error("Invalid trashed_column on cfg %d: %s", cfg.id, cfg.trashed_column)
+    if not _validate_cfg_identifiers(cfg):
         return info
 
     try:
         engine = _get_engine(cfg)
+        filenames: list[str] = []
+
         async with engine.connect() as conn:
-            # Pick filename column: 'name' if configured, else just SELECT 1
             select_col = f'"{cfg.name_column}"' if cfg.name_column else "1"
-            query_str = (
+            filters = _build_common_filters(cfg)
+
+            # ── Step 1: tmdb column match ──
+            q1 = (
                 f'SELECT {select_col} FROM "{cfg.table_name}" '
                 f'WHERE CAST("{cfg.tmdb_id_column}" AS TEXT) = CAST(:tmdb_id AS TEXT)'
+                f'{filters} LIMIT 5000'
             )
-            params: dict = {"tmdb_id": str(tmdb_id)}
-
+            params: dict[str, str] = {"tmdb_id": str(tmdb_id)}
             if cfg.media_type_column:
-                query_str += f' AND "{cfg.media_type_column}" = :media_type'
-                params["media_type"] = media_type
-            if cfg.is_dir_column:
-                query_str += f' AND "{cfg.is_dir_column}" = false'
-            if cfg.trashed_column:
-                query_str += f' AND "{cfg.trashed_column}" = false'
-
-            # If we have a name column, also filter to video files only at the
-            # SQL level so we don't pull subtitle / metadata rows over the wire.
-            if cfg.name_column:
-                query_str += (
-                    f" AND lower(\"{cfg.name_column}\") "
-                    f"~ '\\.(mkv|mp4|avi|wmv|ts|m2ts|mpg|flv|webm|rmvb|rm|mov|m4v)$'"
+                q1 = q1.replace(
+                    f'{filters}',
+                    f' AND "{cfg.media_type_column}" = :media_type{filters}',
                 )
+                params["media_type"] = media_type
 
-            # Cap result size to avoid pulling 10k filenames for huge TV shows
-            query_str += " LIMIT 5000"
+            result1 = await conn.execute(text(q1), params)
+            rows1 = result1.fetchall()
 
-            result = await conn.execute(text(query_str), params)
-            rows = result.fetchall()
+            if cfg.name_column:
+                filenames = [r[0] for r in rows1 if r[0]]
+            elif rows1:
+                # Bool-only mode — no name_column configured
+                info["exists"] = True
+                info["total_files"] = len(rows1)
+                return info
 
-        if not rows:
+            # ── Step 2: path-based fallback ──
+            # Only run if:
+            #   a) path_column AND name_column are configured (need both)
+            #   b) step 1 didn't return enough detail (< threshold)
+            step2_needed = (
+                cfg.path_column
+                and cfg.name_column
+                and _validate_identifier(cfg.path_column)
+            )
+
+            if step2_needed:
+                tmdb_tag = f"[tmdbid={tmdb_id}]"
+
+                # Media-type filtering via path structure:
+                # TV → files under /Season NN/ subdirectories
+                # Movie → files NOT under /Season NN/
+                if media_type == "tv":
+                    season_filter = f' AND "{cfg.path_column}" LIKE :season_pat'
+                    params2 = {"tmdb_tag": f"%{tmdb_tag}%", "season_pat": f"%{tmdb_tag}%Season %"}
+                else:
+                    season_filter = f' AND "{cfg.path_column}" NOT LIKE :season_pat'
+                    params2 = {"tmdb_tag": f"%{tmdb_tag}%", "season_pat": f"%/Season %"}
+
+                q2 = (
+                    f'SELECT "{cfg.name_column}" FROM "{cfg.table_name}" '
+                    f'WHERE "{cfg.path_column}" LIKE :tmdb_tag'
+                    f'{season_filter}'
+                    f'{filters} LIMIT 5000'
+                )
+                result2 = await conn.execute(text(q2), params2)
+                rows2 = result2.fetchall()
+                path_filenames = [r[0] for r in rows2 if r[0]]
+
+                # Merge and deduplicate (step 1 may overlap with step 2)
+                if path_filenames:
+                    existing = set(filenames)
+                    for fn in path_filenames:
+                        if fn not in existing:
+                            filenames.append(fn)
+                            existing.add(fn)
+
+        if not filenames:
             return info
 
-        if cfg.name_column:
-            filenames = [r[0] for r in rows if r[0]]
-            return _aggregate_filenames(filenames)
-        else:
-            # Bool-only mode
-            info["exists"] = True
-            info["total_files"] = len(rows)
-            return info
+        return _aggregate_filenames(filenames)
 
     except Exception:
         logger.exception(
@@ -502,23 +573,45 @@ async def check_one_config(
 def format_library_detail_lines(
     info: dict[str, Any], media_type: str
 ) -> list[str]:
-    """Render LibraryInfo as a list of human-readable lines (Chinese)."""
+    """Render LibraryInfo as human-readable lines (Chinese).
+
+    For TV requests: shows per-season episode ranges grouped with
+    resolution info. Standalone (non-SxxExx) files are shown separately
+    under a "其他版本" heading so they're visually distinct from episode
+    listings.
+
+    For movie requests: shows resolution × count for each version.
+    """
     lines: list[str] = []
     if not info or not info.get("exists"):
         return lines
 
-    if media_type == "tv" or info.get("tv_seasons"):
-        for s in info.get("tv_seasons", []):
-            res = "/".join(s.get("resolutions") or []) or "其他"
-            lines.append(
-                f"\U0001f4fa S{s['season']:02d}: "
-                f"E{s['first_ep']:02d}-E{s['last_ep']:02d} "
-                f"({res}) {s['ep_count']}集"
-            )
-
-    # Movie versions (also include leftover non-episode files for TV — extras)
+    tv_seasons = info.get("tv_seasons") or []
     versions = info.get("movie_versions") or []
-    if versions:
+
+    if media_type == "tv":
+        # ── TV mode: show seasons + episodes ──
+        if tv_seasons:
+            total_seasons = len(tv_seasons)
+            lines.append(f"\U0001f4fa \u5267\u96c6 ({total_seasons}\u5b63):")
+            for s in tv_seasons:
+                res = "/".join(s.get("resolutions") or []) or "\u5176\u4ed6"
+                lines.append(
+                    f"  S{s['season']:02d}: "
+                    f"E{s['first_ep']:02d}-E{s['last_ep']:02d} "
+                    f"({res}) {s['ep_count']}\u96c6"
+                )
+        # Non-episode files under TV shows = specials/extras
+        if versions:
+            lines.append(f"\n\U0001f4c0 \u5176\u4ed6\u7248\u672c:")
+            for v in versions:
+                label = v["resolution"]
+                if v.get("hdr"):
+                    label += f" {v['hdr']}"
+                lines.append(f"  {label} \u00d7 {v['count']}")
+
+    else:
+        # ── Movie mode: show resolution × count ──
         for v in versions:
             label = v["resolution"]
             if v.get("hdr"):

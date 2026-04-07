@@ -199,6 +199,7 @@ def _serialize_media_lib(cfg: MediaLibraryConfig) -> dict:
         tmdb_id_column=cfg.tmdb_id_column,
         media_type_column=cfg.media_type_column,
         name_column=cfg.name_column,
+        path_column=cfg.path_column,
         is_dir_column=cfg.is_dir_column,
         trashed_column=cfg.trashed_column,
         api_url=cfg.api_url,
@@ -242,6 +243,7 @@ async def create_media_library_config(
         tmdb_id_column=body.tmdb_id_column,
         media_type_column=body.media_type_column,
         name_column=body.name_column,
+        path_column=body.path_column,
         is_dir_column=body.is_dir_column,
         trashed_column=body.trashed_column,
         api_url=body.api_url,
@@ -293,6 +295,7 @@ async def update_media_library_config(
     cfg.tmdb_id_column = body.tmdb_id_column
     cfg.media_type_column = body.media_type_column
     cfg.name_column = body.name_column
+    cfg.path_column = body.path_column
     cfg.is_dir_column = body.is_dir_column
     cfg.trashed_column = body.trashed_column
     cfg.api_url = body.api_url

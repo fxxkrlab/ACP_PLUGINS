@@ -125,6 +125,7 @@ class MediaLibraryConfig(Base, TimestampMixin):
     # fetches all matching filenames and parses them for resolution / HDR /
     # season-episode info to display in the bot reply.
     name_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    path_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     is_dir_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     trashed_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     # API-mode fields (used when db_type="api")
