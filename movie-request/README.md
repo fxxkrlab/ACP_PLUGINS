@@ -47,6 +47,14 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.19 (2026-04-08)
+- **Feature**: Supplement-request for missing resolutions — when a movie is found in the library but is missing the 1080p or 4K version, the bot now offers "✅ 补片 1080p" / "✅ 补片 4K" buttons (plus a Cancel button). Clicking submits a separate `MovieRequest` row tagged with `requested_resolution`.
+- **Logic**: Only triggers for movies (TV shows already have per-season tracking). Only considers 1080p and 4K — other resolutions (720p, etc.) and HDR/DoVi flavours are ignored. If both 1080p and 4K exist, no buttons are shown.
+- **Backend**: New column `requested_resolution` on `plg_movie_request_requests`. Dedup is now by `(tmdb_id, media_type, requested_resolution)` so a generic request and a 4K supplement for the same movie are tracked as separate rows.
+- **Migration**: `005_add_requested_resolution`
+- **Frontend**: Admin requests table shows a small `补片 1080p` / `补片 4K` orange badge next to entries that came from a supplement request.
+- **Cancel**: The Cancel button is now context-aware — `❌ 已取消补片` for supplement context, `❌ 求片已取消` for normal flow.
+
 ### 1.0.18 (2026-04-08)
 - **Feature**: Edit existing media library configs in place — pencil icon on each card opens an inline edit form pre-filled with current values. Backend `PATCH /media-library/{id}` updates a single config.
 - **UX**: Password and API auth header are never pre-filled in the edit form. Leaving them blank keeps the existing value (so users can edit other fields without re-typing secrets).

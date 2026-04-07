@@ -93,6 +93,52 @@ def _confirm_keyboard(
     ]])
 
 
+def _missing_main_resolutions(library_info: dict) -> list[str]:
+    """Return the standard resolutions (1080p / 4K) NOT present in the library.
+
+    Only used for movies — TV shows track per-season episode counts instead.
+    Returns an ordered list, e.g. ``["4K"]`` or ``["1080p", "4K"]``.
+    """
+    versions = library_info.get("movie_versions") or []
+    have = {v.get("resolution") for v in versions}
+    missing: list[str] = []
+    for res in ("1080p", "4K"):
+        if res not in have:
+            missing.append(res)
+    return missing
+
+
+def _supplement_keyboard(
+    media_type: str,
+    tmdb_id: int,
+    user_tg_uid: int,
+    missing: list[str],
+) -> InlineKeyboardMarkup:
+    """Inline keyboard for "supplement-request" — buttons for the missing
+    1080p/4K version(s) plus a generic Cancel button.
+    """
+    suffix = f"{media_type}:{tmdb_id}:{user_tg_uid}"
+    rows: list[list[InlineKeyboardButton]] = []
+
+    sup_row: list[InlineKeyboardButton] = []
+    for res in missing:
+        # Encode "1080p" as "1080p" and "4K" as "4k" — keep callback_data short
+        code = res.lower()
+        sup_row.append(InlineKeyboardButton(
+            text=f"\u2705 \u8865\u7247 {res}",  # ✅ 补片 1080p
+            callback_data=f"mr:s:{suffix}:{code}",
+        ))
+    if sup_row:
+        rows.append(sup_row)
+
+    rows.append([InlineKeyboardButton(
+        text="\u274c \u53d6\u6d88",  # ❌ 取消
+        callback_data=f"mr:x:{suffix}",
+    )])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 # ──────────────────────────────────────────────
 #  Custom filter
 # ──────────────────────────────────────────────
@@ -259,16 +305,19 @@ async def _save_request(
     tmdb_id: int,
     in_library: bool,
     tg_user_db_id: int,
+    requested_resolution: str | None = None,
 ) -> MovieRequest:
     """Persist a MovieRequest + MovieRequestUser to the database.
 
-    Handles the dedup case: if the same tmdb_id+media_type already exists,
-    increments request_count and adds a new MovieRequestUser row.
+    Dedup is by (tmdb_id, media_type, requested_resolution) — a generic
+    request and a "supplement 4K" request for the same movie are tracked
+    as TWO separate rows so both can be fulfilled / rejected independently.
     """
     result = await session.execute(
         select(MovieRequest).where(
             MovieRequest.tmdb_id == tmdb_id,
             MovieRequest.media_type == media_type,
+            MovieRequest.requested_resolution == requested_resolution,
         )
     )
     existing = result.scalar_one_or_none()
@@ -289,6 +338,7 @@ async def _save_request(
         return existing
 
     req = _build_movie_request(tmdb_data, media_type, tmdb_id, in_library)
+    req.requested_resolution = requested_resolution
     session.add(req)
     await session.flush()
     session.add(MovieRequestUser(
@@ -395,10 +445,64 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
             in_library = library_info.get("exists", False)
             await session.commit()
 
-            # ---- 5. Already in library? No confirmation needed ----
+            # ---- 5. Already in library? Three sub-cases ----
             if in_library:
                 preview = _build_movie_request(tmdb_data, media_type, tmdb_id, True)
                 detail_lines = format_library_detail_lines(library_info, media_type)
+
+                # 5a. Movies: check for missing 1080p/4K versions and offer
+                #     "supplement-request" buttons. TV shows skip this — their
+                #     completeness is per-season-episode, not per-resolution.
+                missing = (
+                    _missing_main_resolutions(library_info)
+                    if media_type == "movie" else []
+                )
+
+                if missing:
+                    extra_lines = list(detail_lines) + [
+                        f"\n\U0001f4a1 \u5e93\u5185\u7f3a\u5c11 "
+                        f"{' / '.join(missing)} \u7248\u672c\uff0c\u662f\u5426\u8865\u7247\uff1f"
+                    ]
+                    keyboard = _supplement_keyboard(media_type, tmdb_id, tg_user.id, missing)
+                    sent = await _send_reply_card(
+                        message, preview,
+                        status_override="\u2705 <b>已在媒体库中</b>",
+                        extra_lines=extra_lines,
+                        reply_markup=keyboard,
+                    )
+
+                    # Cache for the supplement callback
+                    _evict_stale_pending()
+                    cache_key = f"{media_type}:{tmdb_id}:{tg_user.id}"
+                    _pending[cache_key] = {
+                        "tmdb_data": tmdb_data,
+                        "in_library": in_library,
+                        "library_info": library_info,
+                        "is_supplement": True,
+                        "missing_resolutions": missing,
+                        "bot_db_id": bot_db_id,
+                        "conv_id": conv.id,
+                        "chat_id": message.chat.id,
+                        "msg_id": getattr(sent, "message_id", None),
+                        "user_msg_id": message.message_id,
+                        "ts": time.monotonic(),
+                    }
+
+                    async with async_session_factory() as outsess:
+                        await _log_outbound(
+                            outsess, conv.id, bot_db_id,
+                            text=_render_caption(
+                                preview,
+                                status_override="✅ 已在媒体库中（缺 " + "/".join(missing) + "）",
+                                extra_lines=extra_lines,
+                            ),
+                            tg_message_id=getattr(sent, "message_id", None),
+                            reply_to_message_id=message.message_id,
+                        )
+                        await outsess.commit()
+                    return
+
+                # 5b. Fully in library — no buttons, informational only
                 sent = await _send_reply_card(
                     message, preview,
                     status_override="\u2705 <b>已在媒体库中</b>",
@@ -479,11 +583,14 @@ async def handle_request_callback(
     """
     logger.info("[mr-callback] received data=%s from tg_uid=%s", callback.data, callback.from_user.id if callback.from_user else None)
     data = (callback.data or "").split(":")
-    if len(data) != 5:
+    # Format: mr:<action>:<media_type>:<tmdb_id>:<user_tg_uid>[:<extra>]
+    # Supplement (action="s") includes a 6th segment with the resolution code.
+    if len(data) not in (5, 6):
         await callback.answer("\u274c Invalid callback", show_alert=True)
         return
 
-    _, action, media_type, tmdb_id_str, user_tg_uid_str = data
+    _, action, media_type, tmdb_id_str, user_tg_uid_str = data[:5]
+    extra = data[5] if len(data) == 6 else None
     try:
         tmdb_id = int(tmdb_id_str)
         user_tg_uid = int(user_tg_uid_str)
@@ -579,11 +686,99 @@ async def handle_request_callback(
                 except Exception:
                     logger.debug("Failed to log outbound for confirm", exc_info=True)
 
+        elif action == "s":  # ── Supplement (求 1080p / 4K 版本) ──
+            if not extra:
+                await callback.answer("\u274c Missing resolution", show_alert=True)
+                return
+            requested_resolution = "1080p" if extra.lower() == "1080p" else "4K"
+
+            # Get TMDB data + library info from cache or refetch
+            if cached:
+                tmdb_data = cached["tmdb_data"]
+                library_info_local = cached.get("library_info") or {}
+                conv_id = cached.get("conv_id")
+            else:
+                async with async_session_factory() as sess:
+                    client = get_tmdb_client()
+                    tmdb_data = await client.get_media(sess, media_type, tmdb_id)
+                    library_info_local = await check_in_library(sess, tmdb_id, media_type)
+                    await sess.commit()
+                conv_id = None
+
+            if not tmdb_data:
+                await callback.answer(
+                    "\u26a0\ufe0f TMDB data unavailable, please try again",
+                    show_alert=True,
+                )
+                return
+
+            # Persist the supplement request
+            async with async_session_factory() as sess:
+                result = await sess.execute(
+                    select(TgUser).where(TgUser.tg_uid == user_tg_uid)
+                )
+                db_user = result.scalar_one_or_none()
+                if db_user is None:
+                    await callback.answer("\u274c User not found", show_alert=True)
+                    return
+
+                req = await _save_request(
+                    sess, tmdb_data, media_type, tmdb_id,
+                    in_library=True,  # by definition, supplement implies in_library
+                    tg_user_db_id=db_user.id,
+                    requested_resolution=requested_resolution,
+                )
+                await sess.commit()
+                await sess.refresh(req)
+
+            # Edit the card: replace status + remove buttons (preserve detail lines)
+            detail_lines = format_library_detail_lines(library_info_local, media_type)
+            confirmed_caption = _render_caption(
+                req,
+                status_override=(
+                    f"\u2705 <b>\u8865\u7247 {requested_resolution} \u5df2\u63d0\u4ea4</b>"
+                ),
+                extra_lines=detail_lines,
+            )
+            try:
+                if callback.message and callback.message.photo:
+                    await callback.message.edit_caption(
+                        caption=confirmed_caption,
+                        parse_mode="HTML",
+                        reply_markup=None,
+                    )
+                elif callback.message:
+                    await callback.message.edit_text(
+                        text=confirmed_caption,
+                        parse_mode="HTML",
+                        reply_markup=None,
+                    )
+            except Exception:
+                logger.warning("Failed to edit message after supplement", exc_info=True)
+
+            await callback.answer(f"\u2705 \u8865\u7247 {requested_resolution} \u5df2\u63d0\u4ea4")
+
+            # Log outbound
+            if conv_id and bot_db_id is not None:
+                try:
+                    async with async_session_factory() as outsess:
+                        await _log_outbound(
+                            outsess, conv_id, bot_db_id,
+                            text=f"[补片 {requested_resolution}] " + (req.title or ""),
+                            tg_message_id=getattr(callback.message, "message_id", None),
+                        )
+                        await outsess.commit()
+                except Exception:
+                    logger.debug("Failed to log outbound for supplement", exc_info=True)
+
         elif action == "x":  # ── Cancel ──
             # Build a preview req for re-rendering the caption
+            is_supplement = bool(cached and cached.get("is_supplement"))
+            library_info_local: dict = {}
             if cached:
                 tmdb_data = cached["tmdb_data"]
                 in_library = cached.get("in_library", False)
+                library_info_local = cached.get("library_info") or {}
             else:
                 # No cache — we need tmdb_data to re-render. Light refetch.
                 async with async_session_factory() as sess:
@@ -594,8 +789,15 @@ async def handle_request_callback(
 
             if tmdb_data:
                 preview = _build_movie_request(tmdb_data, media_type, tmdb_id, in_library)
+                # Pick a context-appropriate cancelled status string
+                if is_supplement:
+                    status_str = "\u274c <b>\u5df2\u53d6\u6d88\u8865\u7247</b>"  # ❌ 已取消补片
+                    extra_for_cancel = format_library_detail_lines(library_info_local, media_type)
+                else:
+                    status_str = "\u274c <b>\u6c42\u7247\u5df2\u53d6\u6d88</b>"  # ❌ 求片已取消
+                    extra_for_cancel = None
                 cancelled_caption = _render_caption(
-                    preview, status_override="\u274c <b>\u6c42\u7247\u5df2\u53d6\u6d88</b>"
+                    preview, status_override=status_str, extra_lines=extra_for_cancel,
                 )
                 try:
                     if callback.message and callback.message.photo:

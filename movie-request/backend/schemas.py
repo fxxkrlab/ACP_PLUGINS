@@ -58,6 +58,7 @@ class MovieRequestOut(BaseModel):
     admin_note: Optional[str] = None
     request_count: int
     in_library: bool
+    requested_resolution: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

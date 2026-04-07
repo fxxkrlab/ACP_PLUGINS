@@ -65,6 +65,10 @@ class MovieRequest(Base, TimestampMixin):
     admin_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     request_count: Mapped[int] = mapped_column(Integer, server_default="1", nullable=False)
     in_library: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+    # If set, this is a "supplement" request asking for a specific version
+    # (e.g. user has 1080p in library but wants the 4K version too).
+    # NULL means a generic full request.
+    requested_resolution: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     # Relationships
     request_users: Mapped[list["MovieRequestUser"]] = relationship(

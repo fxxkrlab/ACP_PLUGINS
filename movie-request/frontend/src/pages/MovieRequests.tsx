@@ -33,6 +33,7 @@ interface MovieRequest {
   admin_note?: string;
   request_count: number;
   in_library: boolean;
+  requested_resolution?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -332,9 +333,21 @@ export default function MovieRequests() {
                           >
                             {req.title}
                           </span>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs" style={{ color: cv('text-muted') }}>{year}</span>
                             <MediaTypeBadge type={req.media_type} />
+                            {req.requested_resolution && (
+                              <span
+                                className="text-[9px] font-semibold font-['JetBrains_Mono'] px-1.5 py-0.5 rounded uppercase"
+                                style={{
+                                  color: cv('orange'),
+                                  background: `color-mix(in srgb, ${cv('orange')} 12%, transparent)`,
+                                }}
+                                title="Supplement request for this resolution"
+                              >
+                                补片 {req.requested_resolution}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
