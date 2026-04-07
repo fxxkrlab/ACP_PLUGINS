@@ -190,15 +190,34 @@ async def _upsert_panel_conversation(
     bot_db_id: int,
     chat_type: str,
 ) -> Conversation:
-    """Find or create the panel-side Conversation."""
+    """Find or create the panel-side Conversation.
+
+    For group chats, finds ANY existing conversation for this user
+    (regardless of which bot created it) so messages from different bots
+    in the same group all land in one conversation window. Without this,
+    the same user's messages get split across separate conversation tabs
+    when interacting with different bots from the same bot pool.
+    """
     source_type = "private" if chat_type == "private" else "group"
-    result = await session.execute(
-        select(Conversation).where(
-            Conversation.tg_user_id == tg_user_db_id,
-            Conversation.source_type == source_type,
-            Conversation.primary_bot_id == bot_db_id,
+
+    if source_type == "group":
+        # Group: match by user + source_type only — not by bot_id
+        result = await session.execute(
+            select(Conversation).where(
+                Conversation.tg_user_id == tg_user_db_id,
+                Conversation.source_type == "group",
+            ).order_by(Conversation.id.asc()).limit(1)
         )
-    )
+    else:
+        # Private: match by user + source_type + bot_id
+        result = await session.execute(
+            select(Conversation).where(
+                Conversation.tg_user_id == tg_user_db_id,
+                Conversation.source_type == source_type,
+                Conversation.primary_bot_id == bot_db_id,
+            )
+        )
+
     conv = result.scalar_one_or_none()
     if conv is None:
         conv = Conversation(
