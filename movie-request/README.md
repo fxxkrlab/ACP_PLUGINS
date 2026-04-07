@@ -47,6 +47,10 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.14 (2026-04-07)
+- **Fix (CRITICAL)**: Confirm/Cancel callbacks failed silently with `TypeError: missing required argument 'bot_db_id'` because Panel < 1.1.5 only injected bot context on the message observer, not callback_query. The handler now declares `bot_db_id` as optional so it works on older Panels too. Requires Panel >= **1.1.5** for full functionality (logs outbound messages).
+- **UI**: TMDB / IMDB links moved ABOVE the status line, so the action prompt ("❓ 是否确认求片？") sits at the very bottom, right next to the inline buttons it refers to.
+
 ### 1.0.13 (2026-04-07)
 - **Feature**: Confirmation step before submitting a request — bot shows the movie card with inline buttons (✅ 确认求片 / ❌ 取消). Only after the user clicks ✅ is the request saved to the database. Clicking ❌ edits the card to "求片已取消" without any DB write.
 - **Feature**: Same-user duplicate requests now show "🔄 你已经求过这部了" without buttons (informational only)
@@ -74,7 +78,7 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Compatibility
 
-Requires ADMINCHAT Panel >= **1.1.4** for correct plugin bot handler dispatch and ORM registry cleanup.
+Requires ADMINCHAT Panel >= **1.1.5** for full functionality (callback_query bot context middleware). Will run on 1.1.4 but logs outbound messages may be skipped after a button click.
 
 ## License
 

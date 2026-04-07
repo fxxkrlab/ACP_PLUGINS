@@ -458,8 +458,18 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
 # ──────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("mr:"))
-async def handle_request_callback(callback: CallbackQuery, bot_db_id: int) -> None:
-    """Handle inline-button press for confirm / cancel."""
+async def handle_request_callback(
+    callback: CallbackQuery,
+    bot_db_id: int | None = None,
+) -> None:
+    """Handle inline-button press for confirm / cancel.
+
+    ``bot_db_id`` is injected by the panel's bot context middleware. It is
+    declared optional here so that older Panel versions (< 1.1.5) which only
+    register the middleware on the message observer don't crash this
+    handler with ``TypeError: missing 1 required positional argument``.
+    """
+    logger.info("[mr-callback] received data=%s from tg_uid=%s", callback.data, callback.from_user.id if callback.from_user else None)
     data = (callback.data or "").split(":")
     if len(data) != 5:
         await callback.answer("\u274c Invalid callback", show_alert=True)
@@ -547,8 +557,8 @@ async def handle_request_callback(callback: CallbackQuery, bot_db_id: int) -> No
 
             await callback.answer("\u2705 \u6c42\u7247\u5df2\u63d0\u4ea4")  # ✅ 求片已提交
 
-            # Log outbound (confirmed)
-            if conv_id:
+            # Log outbound (confirmed) — skip if we have no conv_id or bot_db_id
+            if conv_id and bot_db_id is not None:
                 try:
                     async with async_session_factory() as outsess:
                         await _log_outbound(
@@ -725,6 +735,9 @@ def _render_caption(
         links.append(f'<a href="https://www.imdb.com/title/{imdb_id}/">IMDB</a>')
     links_line = " \u00b7 ".join(links)
 
+    # Layout: links go just above the status/action line so the status
+    # (e.g. "❓ 是否确认求片？") sits at the very bottom, right next to
+    # the inline keyboard buttons it refers to.
     caption = (
         f"\U0001f4fd {title_html}\n"
         f"{tagline_line}"
@@ -734,8 +747,8 @@ def _render_caption(
         f"{director_line}"
         f"{cast_line}"
         f"{overview_block}\n\n"
-        f"{status_line}\n"
-        f"{links_line}"
+        f"{links_line}\n\n"
+        f"{status_line}"
     )
 
     # Telegram photo caption hard-cap is 1024 chars.
