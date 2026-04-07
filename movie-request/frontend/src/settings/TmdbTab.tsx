@@ -250,11 +250,22 @@ export default function TmdbTab() {
   const [formName, setFormName] = useState('');
   const [formApiKey, setFormApiKey] = useState('');
   const [formAccessToken, setFormAccessToken] = useState('');
+  const [addError, setAddError] = useState('');
 
   const { data, isLoading } = useQuery({ queryKey: ['tmdb-keys'], queryFn: getTmdbKeys });
   const addMutation = useMutation({
     mutationFn: () => createTmdbKey({ name: formName, api_key: formApiKey, access_token: formAccessToken || undefined }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tmdb-keys'] }); setShowForm(false); setFormName(''); setFormApiKey(''); setFormAccessToken(''); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tmdb-keys'] }); setShowForm(false); setFormName(''); setFormApiKey(''); setFormAccessToken(''); setAddError(''); },
+    onError: (err: any) => {
+      const detail = err?.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setAddError(detail.map((d: any) => `${d.loc?.join('.')}: ${d.msg}`).join('; '));
+      } else if (typeof detail === 'string') {
+        setAddError(detail);
+      } else {
+        setAddError(err?.message || 'Failed to add key');
+      }
+    },
   });
   const deleteMutation = useMutation({ mutationFn: (id: number) => deleteTmdbKey(id), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tmdb-keys'] }) });
 
@@ -289,10 +300,15 @@ export default function TmdbTab() {
               <input type="text" value={formAccessToken} onChange={(e) => setFormAccessToken(e.target.value)} placeholder="Bearer token" style={inputStyle} />
             </div>
           </div>
+          {addError && (
+            <p className="text-xs font-['JetBrains_Mono']" style={{ color: cv('red') }}>
+              {addError}
+            </p>
+          )}
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors" style={{ color: cv('text-secondary'), border: `1px solid ${cv('border')}` }}>Cancel</button>
+            <button onClick={() => { setShowForm(false); setAddError(''); }} className="px-3 py-1.5 rounded-md text-xs font-medium transition-colors" style={{ color: cv('text-secondary'), border: `1px solid ${cv('border')}` }}>Cancel</button>
             <button
-              onClick={() => addMutation.mutate()}
+              onClick={() => { setAddError(''); addMutation.mutate(); }}
               disabled={!formName || !formApiKey || addMutation.isPending}
               className="inline-flex items-center gap-1.5 px-4 py-1.5 text-black text-xs font-medium rounded-md hover:opacity-90 disabled:opacity-30"
               style={{ background: cv('accent') }}

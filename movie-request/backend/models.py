@@ -31,7 +31,7 @@ class TmdbApiKey(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    api_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    api_key: Mapped[str] = mapped_column(String(500), nullable=False)
     access_token: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)
     is_rate_limited: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
