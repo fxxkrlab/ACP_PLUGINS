@@ -44,7 +44,10 @@ class TmdbClient:
 
     async def _get_best_key(self, session: AsyncSession) -> Optional[TmdbApiKey]:
         """Pick the active, non-rate-limited key with lowest request_count."""
-        now = datetime.now(timezone.utc)
+        # Naive UTC datetime — the rate_limited_until column is timezone-naive
+        # (DateTime, not DateTime(timezone=True)). asyncpg refuses to bind an
+        # offset-aware datetime to a naive column with TypeError.
+        now = datetime.utcnow()
         # First, clear expired rate limits
         result = await session.execute(
             select(TmdbApiKey).where(
@@ -98,7 +101,8 @@ class TmdbClient:
 
                 if resp.status_code == 429:
                     key.is_rate_limited = True
-                    key.rate_limited_until = datetime.now(timezone.utc) + timedelta(seconds=60)
+                    # Naive UTC to match the DateTime column (no timezone).
+                    key.rate_limited_until = datetime.utcnow() + timedelta(seconds=60)
                     logger.warning(
                         "TMDB key %s rate-limited, attempt %d/%d",
                         key.name, attempt + 1, self._MAX_KEY_RETRIES,
@@ -123,14 +127,32 @@ class TmdbClient:
     async def get_movie(
         self, session: AsyncSession, tmdb_id: int, language: str = "zh-CN"
     ) -> Optional[dict[str, Any]]:
-        """Fetch movie details from TMDB."""
-        return await self._request(session, f"/movie/{tmdb_id}", {"language": language})
+        """Fetch movie details from TMDB.
+
+        Uses ``append_to_response`` so credits and external IDs are returned
+        in the same request, avoiding extra round-trips for the reply card.
+        """
+        return await self._request(
+            session,
+            f"/movie/{tmdb_id}",
+            {
+                "language": language,
+                "append_to_response": "credits,external_ids,videos",
+            },
+        )
 
     async def get_tv(
         self, session: AsyncSession, tmdb_id: int, language: str = "zh-CN"
     ) -> Optional[dict[str, Any]]:
-        """Fetch TV show details from TMDB."""
-        return await self._request(session, f"/tv/{tmdb_id}", {"language": language})
+        """Fetch TV show details from TMDB (with credits + external IDs)."""
+        return await self._request(
+            session,
+            f"/tv/{tmdb_id}",
+            {
+                "language": language,
+                "append_to_response": "credits,external_ids,videos",
+            },
+        )
 
     async def get_media(
         self, session: AsyncSession, media_type: str, tmdb_id: int, language: str = "zh-CN"
