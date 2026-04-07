@@ -47,6 +47,12 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.13 (2026-04-07)
+- **Feature**: Confirmation step before submitting a request — bot shows the movie card with inline buttons (✅ 确认求片 / ❌ 取消). Only after the user clicks ✅ is the request saved to the database. Clicking ❌ edits the card to "求片已取消" without any DB write.
+- **Feature**: Same-user duplicate requests now show "🔄 你已经求过这部了" without buttons (informational only)
+- **Feature**: Callback query handler for inline button presses, with requester-only access control
+- **Enhancement**: Added `callback_query` to manifest `bot_events`
+
 ### 1.0.12 (2026-04-07)
 - **Fix**: `_log_inbound` crashed on `message.model_dump()` because aiogram's `Default` sentinel is not JSON-serializable; now excludes `bot` and `from_user` fields (mirrors the panel's `private.py` approach)
 
