@@ -47,6 +47,19 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.17 (2026-04-08)
+- **Feature**: Multi-database support — Media Library Check now supports multiple connections side-by-side. Each one is rendered as its own card with Test/Delete buttons. The bot queries all active configs and merges results.
+- **Feature**: Library version detail — when the optional `name_column` (and optionally `is_dir_column` / `trashed_column`) is set, the bot reply card now shows version information below "已在媒体库中":
+  - **Movies**: `📀 1080p × 1`, `📀 4K DoVi+HDR10 × 1` etc.
+  - **TV shows**: `📺 S01: E01-E26 (1080p) 26集`, `📺 S02: E01-E07 (1080p) 7集` etc.
+- **Filename parser**: Detects resolution (4K/2160p/UHD, 1080p/FHD, 720p/HD, 576p, 480p), HDR (DoVi, HDR10+, HDR10, HDR), and SxxExx season/episode patterns.
+- **Backend**: New migration `004_media_library_detail` adds `name_column`, `is_dir_column`, `trashed_column` columns. Routes refactored from singleton to multi-config CRUD: `GET /media-library` returns a list, `POST` creates one (no longer replaces all), `DELETE /media-library/{id}` removes one, `POST /media-library/{id}/test` tests one.
+- **Service**: `check_in_library()` now returns a `LibraryInfo` dict (not bool) with `exists`, `movie_versions`, `tv_seasons`, `total_files`. Multi-config aggregation merges results across all active configs. Backwards compatible — bool callers can use `info["exists"]`.
+
+### 1.0.16 (2026-04-08)
+- **Fix**: Media library `int → str` type cast — `CAST AS TEXT` on both sides of comparison so DBs that store tmdb_id as VARCHAR work without asyncpg type errors
+- **i18n**: Status text fully Chinese (`已在媒体库中`, `求片已提交`, `N人已求过此片`)
+
 ### 1.0.15 (2026-04-08)
 - **Feature**: Delete movie requests — new `DELETE /{request_id}` endpoint + trash icon button in the admin requests table (with confirmation dialog)
 - **Feature**: API-mode media library check — select "HTTP API" as connection type to check if a tmdb_id exists via an external REST API endpoint. Supports custom URL with `{tmdb_id}` / `{media_type}` placeholders, optional Authorization header, and configurable JSON response field path.

@@ -95,6 +95,11 @@ class MediaLibraryConfigCreate(BaseModel):
     table_name: Optional[str] = Field(default=None, max_length=100)
     tmdb_id_column: Optional[str] = Field(default=None, max_length=100)
     media_type_column: Optional[str] = Field(default=None, max_length=100)
+    # Detail-mode fields — when name_column is set, the plugin queries the
+    # filenames and parses them for resolution / HDR / season-episode info.
+    name_column: Optional[str] = Field(default=None, max_length=100)
+    is_dir_column: Optional[str] = Field(default=None, max_length=100)
+    trashed_column: Optional[str] = Field(default=None, max_length=100)
     # API-mode fields
     api_url: Optional[str] = Field(default=None, max_length=500)
     api_auth_header: Optional[str] = Field(default=None, max_length=500)
@@ -113,6 +118,9 @@ class MediaLibraryConfigOut(BaseModel):
     table_name: Optional[str] = None
     tmdb_id_column: Optional[str] = None
     media_type_column: Optional[str] = None
+    name_column: Optional[str] = None
+    is_dir_column: Optional[str] = None
+    trashed_column: Optional[str] = None
     api_url: Optional[str] = None
     api_auth_header_masked: Optional[str] = None
     api_response_path: Optional[str] = None

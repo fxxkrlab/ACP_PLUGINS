@@ -107,17 +107,24 @@ class MediaLibraryConfig(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    db_type: Mapped[str] = mapped_column(String(20), nullable=False)  # postgresql | mysql
-    host: Mapped[str] = mapped_column(String(200), nullable=False)
+    db_type: Mapped[str] = mapped_column(String(20), nullable=False)  # postgresql | mysql | api
+    host: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     port: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    database: Mapped[str] = mapped_column(String(100), nullable=False)
-    username: Mapped[str] = mapped_column(String(100), nullable=False)
-    password: Mapped[str] = mapped_column(String(200), nullable=False)
-    table_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    tmdb_id_column: Mapped[str] = mapped_column(String(100), nullable=False)
+    database: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    username: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    password: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    table_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    tmdb_id_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     media_type_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Optional columns for "library detail" mode (returns version/season info
+    # instead of just exists/not). When ``name_column`` is set, the plugin
+    # fetches all matching filenames and parses them for resolution / HDR /
+    # season-episode info to display in the bot reply.
+    name_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    is_dir_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    trashed_column: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     # API-mode fields (used when db_type="api")
     api_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     api_auth_header: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     api_response_path: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, server_default="false", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, server_default="true", nullable=False)

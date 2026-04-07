@@ -67,6 +67,9 @@ interface MediaLibraryConfig {
   table_name?: string;
   tmdb_id_column?: string;
   media_type_column?: string;
+  name_column?: string;
+  is_dir_column?: string;
+  trashed_column?: string;
   api_url?: string;
   api_auth_header_masked?: string;
   api_response_path?: string;
@@ -85,17 +88,19 @@ async function createTmdbKey(body: { name: string; api_key: string; access_token
   return data.data;
 }
 async function deleteTmdbKey(id: number) { await pluginApi.delete(`/tmdb-keys/${id}`); }
-async function getMediaLibraryConfig(): Promise<MediaLibraryConfig | null> {
+async function listMediaLibraryConfigs(): Promise<{ items: MediaLibraryConfig[] }> {
   const { data } = await pluginApi.get('/media-library');
   return data.data;
 }
-async function saveMediaLibraryConfig(body: Record<string, unknown>) {
+async function createMediaLibraryConfig(body: Record<string, unknown>) {
   const { data } = await pluginApi.post('/media-library', body);
   return data.data;
 }
-async function deleteMediaLibraryConfig() { await pluginApi.delete('/media-library'); }
-async function testMediaLibraryConfig() {
-  const { data } = await pluginApi.post('/media-library/test');
+async function deleteMediaLibraryConfig(id: number) {
+  await pluginApi.delete(`/media-library/${id}`);
+}
+async function testMediaLibraryConfig(id: number) {
+  const { data } = await pluginApi.post(`/media-library/${id}/test`);
   return data.data as { success: boolean; message: string };
 }
 
@@ -110,6 +115,68 @@ function Badge({ label, color }: { label: string; color: string }) {
   );
 }
 
+// ── Single config card (rendered for each existing config) ──
+function MediaLibraryConfigCard({ config }: { config: MediaLibraryConfig }) {
+  const queryClient = useQueryClient();
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteMediaLibraryConfig(config.id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library-configs'] }),
+  });
+  const testMutation = useMutation({ mutationFn: () => testMediaLibraryConfig(config.id) });
+
+  const summary = config.db_type === 'api'
+    ? `API @ ${config.api_url?.substring(0, 60) || '—'}${(config.api_url?.length || 0) > 60 ? '…' : ''}`
+    : `${config.db_type.toUpperCase()} @ ${config.host}:${config.port || (config.db_type === 'postgresql' ? 5432 : 3306)} / ${config.database}`;
+
+  return (
+    <div style={cardStyle} className="space-y-3">
+      <div className="flex items-start justify-between">
+        <div className="min-w-0 flex-1">
+          <h4 className="text-sm font-medium" style={{ color: cv('text-primary') }}>{config.name}</h4>
+          <p className="text-xs font-['JetBrains_Mono'] mt-1 truncate" style={{ color: cv('text-muted') }}>{summary}</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => testMutation.mutate()}
+            disabled={testMutation.isPending}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-40"
+            style={{ color: cv('accent'), border: `1px solid color-mix(in srgb, ${cv('accent')} 20%, transparent)` }}
+          >
+            {testMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <FlaskConical size={12} />}
+            Test
+          </button>
+          <button
+            onClick={() => { if (confirm('Delete this database connection?')) deleteMutation.mutate(); }}
+            disabled={deleteMutation.isPending}
+            className="p-1.5 rounded-md transition-colors"
+            style={{ color: cv('text-muted') }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = cv('red'); }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = cv('text-muted'); }}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-3 text-xs">
+        {config.db_type === 'api'
+          ? [['Response Field', config.api_response_path || 'exists'], ['Auth', config.api_auth_header_masked || '\u2014'], ['Type', 'HTTP API']].map(([l, v]) => (
+              <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
+            ))
+          : [['Table', config.table_name || '\u2014'], ['TMDB ID Column', config.tmdb_id_column || '\u2014'], ['Name Column', config.name_column || '\u2014 (bool only)']].map(([l, v]) => (
+              <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
+            ))
+        }
+      </div>
+      {config.is_active && <Badge label="ACTIVE" color={cv('green')} />}
+      {testMutation.data && (
+        <p className="text-xs font-['JetBrains_Mono']" style={{ color: testMutation.data.success ? cv('green') : cv('red') }}>
+          {testMutation.data.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Media Library Section ──
 function MediaLibrarySection() {
   const queryClient = useQueryClient();
@@ -117,12 +184,15 @@ function MediaLibrarySection() {
   const [form, setForm] = useState({
     name: '', db_type: 'postgresql', host: '', port: '', database: '',
     username: '', password: '', table_name: '', tmdb_id_column: 'tmdb_id', media_type_column: '',
+    name_column: '', is_dir_column: '', trashed_column: '',
     api_url: '', api_auth_header: '', api_response_path: 'exists',
   });
 
   const isApi = form.db_type === 'api';
 
-  const { data: config, isLoading } = useQuery({ queryKey: ['media-library-config'], queryFn: getMediaLibraryConfig });
+  const { data, isLoading } = useQuery({ queryKey: ['media-library-configs'], queryFn: listMediaLibraryConfigs });
+  const configs: MediaLibraryConfig[] = data?.items || [];
+
   const saveMutation = useMutation({
     mutationFn: () => {
       const payload: Record<string, unknown> = { name: form.name, db_type: form.db_type };
@@ -139,80 +209,48 @@ function MediaLibrarySection() {
         payload.table_name = form.table_name;
         payload.tmdb_id_column = form.tmdb_id_column;
         payload.media_type_column = form.media_type_column || undefined;
+        payload.name_column = form.name_column || undefined;
+        payload.is_dir_column = form.is_dir_column || undefined;
+        payload.trashed_column = form.trashed_column || undefined;
       }
-      return saveMediaLibraryConfig(payload);
+      return createMediaLibraryConfig(payload);
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['media-library-config'] }); setShowForm(false); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['media-library-configs'] });
+      setShowForm(false);
+      setForm({
+        name: '', db_type: 'postgresql', host: '', port: '', database: '',
+        username: '', password: '', table_name: '', tmdb_id_column: 'tmdb_id', media_type_column: '',
+        name_column: '', is_dir_column: '', trashed_column: '',
+        api_url: '', api_auth_header: '', api_response_path: 'exists',
+      });
+    },
   });
-  const deleteMutation = useMutation({ mutationFn: deleteMediaLibraryConfig, onSuccess: () => queryClient.invalidateQueries({ queryKey: ['media-library-config'] }) });
-  const testMutation = useMutation({ mutationFn: testMediaLibraryConfig });
   const u = (key: string, value: string) => setForm((p) => ({ ...p, [key]: value }));
 
   return (
     <div className="space-y-4 mt-8">
-      <div>
-        <h3 className="text-[18px] font-semibold font-['Space_Grotesk']" style={{ color: cv('text-primary') }}>Media Library Check</h3>
-        <p className="text-xs mt-1" style={{ color: cv('text-muted') }}>
-          Optional: connect to an external database or API to check if a title is already in your media library.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-[18px] font-semibold font-['Space_Grotesk']" style={{ color: cv('text-primary') }}>Media Library Check</h3>
+          <p className="text-xs mt-1" style={{ color: cv('text-muted') }}>
+            Connect one or more external databases / APIs to check if a title is already in your library. When the optional <b>Name Column</b> is set, the bot will also show version details (1080p × 1, 4K DoVi × 1, S01: E01-E26 etc).
+          </p>
+        </div>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0"
+          style={{ color: cv('accent'), background: `color-mix(in srgb, ${cv('accent')} 10%, transparent)` }}
+        >
+          <Plus size={14} /> Add Database
+        </button>
       </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="w-5 h-5 animate-spin" style={{ color: cv('text-muted') }} />
         </div>
-      ) : config ? (
-        <div style={cardStyle} className="space-y-3">
-          <div className="flex items-start justify-between">
-            <div>
-              <h4 className="text-sm font-medium" style={{ color: cv('text-primary') }}>{config.name}</h4>
-              <p className="text-xs font-['JetBrains_Mono'] mt-1" style={{ color: cv('text-muted') }}>
-                {config.db_type === 'api'
-                  ? `API @ ${config.api_url?.substring(0, 60) || '—'}${(config.api_url?.length || 0) > 60 ? '…' : ''}`
-                  : `${config.db_type.toUpperCase()} @ ${config.host}:${config.port || (config.db_type === 'postgresql' ? 5432 : 3306)} / ${config.database}`
-                }
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => testMutation.mutate()}
-                disabled={testMutation.isPending}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-colors disabled:opacity-40"
-                style={{ color: cv('accent'), border: `1px solid color-mix(in srgb, ${cv('accent')} 20%, transparent)` }}
-              >
-                {testMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <FlaskConical size={12} />}
-                Test
-              </button>
-              <button
-                onClick={() => deleteMutation.mutate()}
-                disabled={deleteMutation.isPending}
-                className="p-1.5 rounded-md transition-colors"
-                style={{ color: cv('text-muted') }}
-                onMouseEnter={(e) => { e.currentTarget.style.color = cv('red'); }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = cv('text-muted'); }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-3 text-xs">
-            {config.db_type === 'api'
-              ? [['Response Field', config.api_response_path || 'exists'], ['Auth', config.api_auth_header_masked || '\u2014'], ['Type', 'HTTP API']].map(([l, v]) => (
-                  <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
-                ))
-              : [['Table', config.table_name || '\u2014'], ['TMDB ID Column', config.tmdb_id_column || '\u2014'], ['Type Column', config.media_type_column || '\u2014']].map(([l, v]) => (
-                  <div key={l}><span style={{ color: cv('text-muted') }}>{l}:</span>{' '}<span className="font-['JetBrains_Mono']" style={{ color: cv('text-primary') }}>{v}</span></div>
-                ))
-            }
-          </div>
-          {config.is_active && <Badge label="ACTIVE" color={cv('green')} />}
-          {testMutation.data && (
-            <p className="text-xs font-['JetBrains_Mono']" style={{ color: testMutation.data.success ? cv('green') : cv('red') }}>
-              {testMutation.data.message}
-            </p>
-          )}
-        </div>
-      ) : !showForm ? (
+      ) : configs.length === 0 && !showForm ? (
         <button
           onClick={() => setShowForm(true)}
           className="w-full py-6 rounded-[10px] text-sm transition-colors"
@@ -221,9 +259,13 @@ function MediaLibrarySection() {
           <Database size={20} className="mx-auto mb-2 opacity-50" />
           Configure External Media Library
         </button>
-      ) : null}
+      ) : (
+        <div className="grid grid-cols-1 gap-4">
+          {configs.map((c) => <MediaLibraryConfigCard key={c.id} config={c} />)}
+        </div>
+      )}
 
-      {showForm && !config && (
+      {showForm && (
         <div style={cardStyle} className="space-y-4">
           {/* Row 1: Name + Type */}
           <div className="grid grid-cols-3 gap-4">
@@ -249,7 +291,6 @@ function MediaLibrarySection() {
 
           {isApi ? (
             <>
-              {/* API-mode fields */}
               <div>
                 <label style={labelStyle}>API URL <span style={{ color: cv('text-placeholder') }}>(use {'{tmdb_id}'} and optionally {'{media_type}'} as placeholders)</span></label>
                 <input type="text" value={form.api_url} onChange={(e) => u('api_url', e.target.value)} placeholder="https://api.example.com/library/check?tmdb_id={tmdb_id}&type={media_type}" style={inputStyle} />
@@ -280,12 +321,25 @@ function MediaLibrarySection() {
                 ))}
               </div>
               <div className="grid grid-cols-3 gap-4">
-                {[['Table Name', 'table_name', 'movies'], ['TMDB ID Column', 'tmdb_id_column', 'tmdb_id'], ['Media Type Column', 'media_type_column', 'media_type']].map(([label, key, ph]) => (
+                {[['Table Name', 'table_name', 'files'], ['TMDB ID Column', 'tmdb_id_column', 'tmdb'], ['Media Type Column', 'media_type_column', 'media_type']].map(([label, key, ph]) => (
                   <div key={key}>
                     <label style={labelStyle}>{label}{key === 'media_type_column' ? ' (optional)' : ''}</label>
                     <input type="text" value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
                   </div>
                 ))}
+              </div>
+              <div>
+                <p className="text-[11px] font-['JetBrains_Mono'] mb-2" style={{ color: cv('text-placeholder') }}>
+                  Optional — fill these to enable <b>version detail</b> (1080p × 1, 4K DoVi × 1, S01: E01-E26):
+                </p>
+                <div className="grid grid-cols-3 gap-4">
+                  {[['Name Column', 'name_column', 'name'], ['Is-Dir Column', 'is_dir_column', 'is_dir'], ['Trashed Column', 'trashed_column', 'trashed']].map(([label, key, ph]) => (
+                    <div key={key}>
+                      <label style={labelStyle}>{label} (optional)</label>
+                      <input type="text" value={(form as Record<string, string>)[key]} onChange={(e) => u(key, e.target.value)} placeholder={ph} style={inputStyle} />
+                    </div>
+                  ))}
+                </div>
               </div>
             </>
           )}

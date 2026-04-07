@@ -43,7 +43,7 @@ from app.models.user import TgUser
 
 from backend.models import MovieRequest, MovieRequestUser
 from backend.services.tmdb import get_tmdb_client, parse_tmdb_url, TMDB_IMAGE_BASE
-from backend.services.media_library import check_in_library
+from backend.services.media_library import check_in_library, format_library_detail_lines
 
 logger = logging.getLogger(__name__)
 
@@ -391,20 +391,27 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
                 await session.commit()
                 return
 
-            in_library = await check_in_library(session, tmdb_id, media_type)
+            library_info = await check_in_library(session, tmdb_id, media_type)
+            in_library = library_info.get("exists", False)
             await session.commit()
 
             # ---- 5. Already in library? No confirmation needed ----
             if in_library:
                 preview = _build_movie_request(tmdb_data, media_type, tmdb_id, True)
+                detail_lines = format_library_detail_lines(library_info, media_type)
                 sent = await _send_reply_card(
                     message, preview,
                     status_override="\u2705 <b>已在媒体库中</b>",
+                    extra_lines=detail_lines,
                 )
                 async with async_session_factory() as outsess:
                     await _log_outbound(
                         outsess, conv.id, bot_db_id,
-                        text=_render_caption(preview, status_override="✅ 已在媒体库中"),
+                        text=_render_caption(
+                            preview,
+                            status_override="✅ 已在媒体库中",
+                            extra_lines=detail_lines,
+                        ),
                         tg_message_id=getattr(sent, "message_id", None),
                         reply_to_message_id=message.message_id,
                     )
@@ -426,6 +433,7 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
             _pending[cache_key] = {
                 "tmdb_data": tmdb_data,
                 "in_library": in_library,
+                "library_info": library_info,
                 "bot_db_id": bot_db_id,
                 "conv_id": conv.id,
                 "chat_id": message.chat.id,
@@ -506,7 +514,8 @@ async def handle_request_callback(
                 async with async_session_factory() as sess:
                     client = get_tmdb_client()
                     tmdb_data = await client.get_media(sess, media_type, tmdb_id)
-                    in_library = await check_in_library(sess, tmdb_id, media_type)
+                    library_info_fresh = await check_in_library(sess, tmdb_id, media_type)
+                    in_library = library_info_fresh.get("exists", False)
                     await sess.commit()
                 conv_id = None  # will skip outbound log if unknown
 
@@ -641,6 +650,7 @@ def _render_caption(
     req: MovieRequest,
     is_duplicate: bool = False,
     status_override: str | None = None,
+    extra_lines: list[str] | None = None,
 ) -> str:
     """Render the rich poster-caption for a MovieRequest.
 
@@ -649,6 +659,9 @@ def _render_caption(
         is_duplicate: Whether this is a duplicate request (multiple users).
         status_override: If set, replaces the auto-computed status line.
             Accepts raw HTML (e.g. ``"❓ <b>是否确认求片？</b>"``).
+        extra_lines: Optional list of plain-text lines appended *below* the
+            status line. Used for media-library detail rendering, e.g.
+            ``["📀 1080p × 1", "📀 4K DoVi+HDR10 × 1"]``.
     """
     raw = req.tmdb_raw or {}
     is_tv = req.media_type == "tv"
@@ -735,6 +748,11 @@ def _render_caption(
         links.append(f'<a href="https://www.imdb.com/title/{imdb_id}/">IMDB</a>')
     links_line = " \u00b7 ".join(links)
 
+    # Library detail block (e.g. "📀 1080p × 1" / "📺 S01: E01-E26 1080p")
+    extra_block = ""
+    if extra_lines:
+        extra_block = "\n" + "\n".join(_html_escape(line) for line in extra_lines)
+
     # Layout: links go just above the status/action line so the status
     # (e.g. "❓ 是否确认求片？") sits at the very bottom, right next to
     # the inline keyboard buttons it refers to.
@@ -749,6 +767,7 @@ def _render_caption(
         f"{overview_block}\n\n"
         f"{links_line}\n\n"
         f"{status_line}"
+        f"{extra_block}"
     )
 
     # Telegram photo caption hard-cap is 1024 chars.
@@ -766,9 +785,13 @@ async def _send_reply_card(
     is_duplicate: bool = False,
     status_override: str | None = None,
     reply_markup: InlineKeyboardMarkup | None = None,
+    extra_lines: list[str] | None = None,
 ):
     """Send a rich poster-card reply. Returns the sent Message or None."""
-    caption = _render_caption(req, is_duplicate=is_duplicate, status_override=status_override)
+    caption = _render_caption(
+        req, is_duplicate=is_duplicate,
+        status_override=status_override, extra_lines=extra_lines,
+    )
     poster_url = f"{TMDB_IMAGE_BASE}/w780{req.poster_path}" if req.poster_path else None
 
     try:

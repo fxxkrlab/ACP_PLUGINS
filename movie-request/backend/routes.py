@@ -184,20 +184,9 @@ async def delete_tmdb_key(
 #  Media Library Config
 # ──────────────────────────────────────────────
 
-@router.get("/media-library", response_model=APIResponse)
-async def get_media_library_config(
-    db: Annotated[AsyncSession, Depends(get_db)],
-    _admin: Annotated[Admin, Depends(require_super_admin)],
-) -> APIResponse:
-    """Get the current media library config (if any)."""
-    result = await db.execute(
-        select(MediaLibraryConfig).order_by(MediaLibraryConfig.created_at.desc()).limit(1)
-    )
-    cfg = result.scalar_one_or_none()
-    if not cfg:
-        return APIResponse(data=None)
-
-    out = MediaLibraryConfigOut(
+def _serialize_media_lib(cfg: MediaLibraryConfig) -> dict:
+    """Serialize a MediaLibraryConfig row with masked secrets."""
+    return MediaLibraryConfigOut(
         id=cfg.id,
         name=cfg.name,
         db_type=cfg.db_type,
@@ -209,28 +198,38 @@ async def get_media_library_config(
         table_name=cfg.table_name,
         tmdb_id_column=cfg.tmdb_id_column,
         media_type_column=cfg.media_type_column,
+        name_column=cfg.name_column,
+        is_dir_column=cfg.is_dir_column,
+        trashed_column=cfg.trashed_column,
         api_url=cfg.api_url,
         api_auth_header_masked=_mask_key(cfg.api_auth_header) if cfg.api_auth_header else None,
         api_response_path=cfg.api_response_path,
         is_active=cfg.is_active,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
+    ).model_dump()
+
+
+@router.get("/media-library", response_model=APIResponse)
+async def list_media_library_configs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: Annotated[Admin, Depends(require_super_admin)],
+) -> APIResponse:
+    """List all media library configs (multi-config support since v1.0.17)."""
+    result = await db.execute(
+        select(MediaLibraryConfig).order_by(MediaLibraryConfig.id.asc())
     )
-    return APIResponse(data=out.model_dump())
+    configs = result.scalars().all()
+    return APIResponse(data={"items": [_serialize_media_lib(c) for c in configs]})
 
 
 @router.post("/media-library", response_model=APIResponse)
-async def save_media_library_config(
+async def create_media_library_config(
     body: MediaLibraryConfigCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
     _admin: Annotated[Admin, Depends(require_super_admin)],
 ) -> APIResponse:
-    """Create or replace the media library config (only one allowed)."""
-    # Delete existing configs
-    result = await db.execute(select(MediaLibraryConfig))
-    for old in result.scalars().all():
-        await db.delete(old)
-
+    """Add a new media library config (does NOT delete existing ones)."""
     cfg = MediaLibraryConfig(
         name=body.name,
         db_type=body.db_type,
@@ -242,6 +241,9 @@ async def save_media_library_config(
         table_name=body.table_name,
         tmdb_id_column=body.tmdb_id_column,
         media_type_column=body.media_type_column,
+        name_column=body.name_column,
+        is_dir_column=body.is_dir_column,
+        trashed_column=body.trashed_column,
         api_url=body.api_url,
         api_auth_header=body.api_auth_header,
         api_response_path=body.api_response_path,
@@ -253,29 +255,34 @@ async def save_media_library_config(
     return APIResponse(data={"id": cfg.id, "name": cfg.name})
 
 
-@router.delete("/media-library", response_model=APIResponse)
+@router.delete("/media-library/{config_id}", response_model=APIResponse)
 async def delete_media_library_config(
+    config_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     _admin: Annotated[Admin, Depends(require_super_admin)],
 ) -> APIResponse:
-    """Remove the media library config (disables library check)."""
-    result = await db.execute(select(MediaLibraryConfig))
-    for cfg in result.scalars().all():
-        await db.delete(cfg)
+    """Remove a single media library config by id."""
+    result = await db.execute(
+        select(MediaLibraryConfig).where(MediaLibraryConfig.id == config_id)
+    )
+    cfg = result.scalar_one_or_none()
+    if not cfg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config not found")
+    await db.delete(cfg)
     await db.flush()
     return APIResponse(message="Media library config removed")
 
 
-@router.post("/media-library/test", response_model=APIResponse)
+@router.post("/media-library/{config_id}/test", response_model=APIResponse)
 async def test_media_library_config(
+    config_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     _admin: Annotated[Admin, Depends(require_super_admin)],
 ) -> APIResponse:
-    """Test the media library connection."""
-    from backend.services.media_library import check_in_library
+    """Test a single media library connection by id."""
+    from backend.services.media_library import check_one_config
     try:
-        # Just test connectivity by running a harmless check
-        await check_in_library(session=db, tmdb_id=0, media_type="movie")
+        await check_one_config(session=db, config_id=config_id, tmdb_id=0)
         return APIResponse(data={"success": True, "message": "Connection successful"})
     except Exception as e:
         return APIResponse(data={"success": False, "message": str(e)})
