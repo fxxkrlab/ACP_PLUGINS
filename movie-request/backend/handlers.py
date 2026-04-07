@@ -36,6 +36,23 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="movie_request")
 
+
+def _safe_raw_data(msg: TgMessage) -> dict:
+    """Extract a JSON-safe subset of the raw Telegram message.
+
+    Excludes ``bot`` and ``from_user`` which contain aiogram internal
+    sentinel types (``Default``) that Pydantic cannot serialise to JSON.
+    Mirrors the approach used in ``app/bot/handlers/private.py``.
+    """
+    try:
+        return msg.model_dump(
+            exclude={"bot", "from_user"},
+            exclude_none=True,
+            mode="json",
+        )
+    except Exception:
+        return {}
+
 # ──────────────────────────────────────────────
 #  Custom filter
 # ──────────────────────────────────────────────
@@ -143,7 +160,7 @@ async def _log_inbound(
             if message.reply_to_message
             else None
         ),
-        raw_data=message.model_dump(exclude_none=True, mode="json"),
+        raw_data=_safe_raw_data(message),
         created_at=msg_time,
     )
     session.add(db_msg)
