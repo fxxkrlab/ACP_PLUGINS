@@ -28,6 +28,7 @@ class TmdbApiKey(Base, TimestampMixin):
     """TMDB API key for multi-key rotation."""
 
     __tablename__ = "plg_movie_request_tmdb_keys"
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -43,6 +44,7 @@ class MovieRequest(Base, TimestampMixin):
     """A movie/TV request submitted via Telegram."""
 
     __tablename__ = "plg_movie_request_requests"
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     tmdb_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
@@ -76,6 +78,7 @@ class MovieRequestUser(Base):
     __tablename__ = "plg_movie_request_users"
     __table_args__ = (
         UniqueConstraint("movie_request_id", "tg_user_id", name="uq_plg_movie_request_user"),
+        {"extend_existing": True},
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -100,6 +103,7 @@ class MediaLibraryConfig(Base, TimestampMixin):
     """Configuration for connecting to an external media library database."""
 
     __tablename__ = "plg_movie_request_media_library_configs"
+    __table_args__ = {"extend_existing": True}
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
