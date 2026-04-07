@@ -95,69 +95,10 @@ async def list_requests(
     )
 
 
-@router.get("/{request_id}", response_model=APIResponse)
-async def get_request_detail(
-    request_id: int,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    _admin: Annotated[Admin, Depends(require_admin)],
-) -> APIResponse:
-    """Get movie request detail with requesting users."""
-    result = await db.execute(
-        select(MovieRequest)
-        .options(selectinload(MovieRequest.request_users).joinedload(MovieRequestUser.tg_user))
-        .where(MovieRequest.id == request_id)
-    )
-    req = result.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
-
-    # Build user list with TG info via joined relationship
-    user_list: list[dict] = []
-    for ru in req.request_users:
-        tg = ru.tg_user  # lazy="joined" on MovieRequestUser.tg_user
-        user_list.append(
-            MovieRequestUserOut(
-                id=ru.id,
-                tg_user_id=ru.tg_user_id,
-                tg_username=tg.username if tg else None,
-                tg_first_name=tg.first_name if tg else None,
-                created_at=ru.created_at,
-            ).model_dump()
-        )
-
-    detail = MovieRequestDetail.model_validate(req)
-    data = detail.model_dump()
-    data["request_users"] = user_list
-
-    return APIResponse(data=data)
-
-
-@router.patch("/{request_id}", response_model=APIResponse)
-async def update_request(
-    request_id: int,
-    body: MovieRequestUpdate,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    _admin: Annotated[Admin, Depends(require_admin)],
-) -> APIResponse:
-    """Update movie request status / admin note."""
-    result = await db.execute(
-        select(MovieRequest).where(MovieRequest.id == request_id)
-    )
-    req = result.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
-
-    if body.status is not None:
-        req.status = body.status
-    if body.admin_note is not None:
-        req.admin_note = body.admin_note
-
-    await db.flush()
-    return APIResponse(data=MovieRequestOut.model_validate(req).model_dump())
-
-
 # ──────────────────────────────────────────────
 #  TMDB API Keys
+#  NOTE: These routes MUST be defined BEFORE /{request_id}
+#  to avoid FastAPI matching "tmdb-keys" as a request_id int.
 # ──────────────────────────────────────────────
 
 def _mask_key(key: str) -> str:
@@ -332,3 +273,67 @@ async def test_media_library_config(
         return APIResponse(data={"success": True, "message": "Connection successful"})
     except Exception as e:
         return APIResponse(data={"success": False, "message": str(e)})
+
+
+# ──────────────────────────────────────────────
+#  Movie Request Detail (dynamic path params MUST be last)
+# ──────────────────────────────────────────────
+
+@router.get("/{request_id:int}", response_model=APIResponse)
+async def get_request_detail(
+    request_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: Annotated[Admin, Depends(require_admin)],
+) -> APIResponse:
+    """Get movie request detail with requesting users."""
+    result = await db.execute(
+        select(MovieRequest)
+        .options(selectinload(MovieRequest.request_users).joinedload(MovieRequestUser.tg_user))
+        .where(MovieRequest.id == request_id)
+    )
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    user_list: list[dict] = []
+    for ru in req.request_users:
+        tg = ru.tg_user
+        user_list.append(
+            MovieRequestUserOut(
+                id=ru.id,
+                tg_user_id=ru.tg_user_id,
+                tg_username=tg.username if tg else None,
+                tg_first_name=tg.first_name if tg else None,
+                created_at=ru.created_at,
+            ).model_dump()
+        )
+
+    detail = MovieRequestDetail.model_validate(req)
+    data = detail.model_dump()
+    data["request_users"] = user_list
+
+    return APIResponse(data=data)
+
+
+@router.patch("/{request_id:int}", response_model=APIResponse)
+async def update_request(
+    request_id: int,
+    body: MovieRequestUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: Annotated[Admin, Depends(require_admin)],
+) -> APIResponse:
+    """Update movie request status / admin note."""
+    result = await db.execute(
+        select(MovieRequest).where(MovieRequest.id == request_id)
+    )
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+
+    if body.status is not None:
+        req.status = body.status
+    if body.admin_note is not None:
+        req.admin_note = body.admin_note
+
+    await db.flush()
+    return APIResponse(data=MovieRequestOut.model_validate(req).model_dump())
