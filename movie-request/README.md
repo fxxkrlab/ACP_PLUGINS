@@ -47,6 +47,9 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.20 (2026-04-08)
+- **Fix**: Group conversations no longer split across multiple chat windows when a user interacts with different bots from the same pool (`_upsert_panel_conversation` now matches by `(tg_user_id, source_type="group")` without `primary_bot_id` filter for group chats)
+
 ### 1.0.19 (2026-04-08)
 - **Feature**: Supplement-request for missing resolutions — when a movie is found in the library but is missing the 1080p or 4K version, the bot now offers "✅ 补片 1080p" / "✅ 补片 4K" buttons (plus a Cancel button). Clicking submits a separate `MovieRequest` row tagged with `requested_resolution`.
 - **Logic**: Only triggers for movies (TV shows already have per-season tracking). Only considers 1080p and 4K — other resolutions (720p, etc.) and HDR/DoVi flavours are ignored. If both 1080p and 4K exist, no buttons are shown.
