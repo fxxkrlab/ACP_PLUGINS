@@ -255,6 +255,55 @@ async def create_media_library_config(
     return APIResponse(data={"id": cfg.id, "name": cfg.name})
 
 
+@router.patch("/media-library/{config_id}", response_model=APIResponse)
+async def update_media_library_config(
+    config_id: int,
+    body: MediaLibraryConfigCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: Annotated[Admin, Depends(require_super_admin)],
+) -> APIResponse:
+    """Update an existing media library config in place.
+
+    Empty/null values in the body REPLACE the existing column values
+    (this is a full update, not a sparse merge). The frontend should
+    pre-fill the form with current values before submitting.
+
+    Special case for the password field: if the body's ``password`` is
+    None or empty, the existing password is kept (so users can edit
+    other fields without re-typing the password). Same for
+    ``api_auth_header``.
+    """
+    result = await db.execute(
+        select(MediaLibraryConfig).where(MediaLibraryConfig.id == config_id)
+    )
+    cfg = result.scalar_one_or_none()
+    if not cfg:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Config not found")
+
+    # Plain assignments — preserve secrets if blank
+    cfg.name = body.name
+    cfg.db_type = body.db_type
+    cfg.host = body.host
+    cfg.port = body.port
+    cfg.database = body.database
+    cfg.username = body.username
+    if body.password:  # only overwrite if a new value was supplied
+        cfg.password = body.password
+    cfg.table_name = body.table_name
+    cfg.tmdb_id_column = body.tmdb_id_column
+    cfg.media_type_column = body.media_type_column
+    cfg.name_column = body.name_column
+    cfg.is_dir_column = body.is_dir_column
+    cfg.trashed_column = body.trashed_column
+    cfg.api_url = body.api_url
+    if body.api_auth_header:  # only overwrite if a new value was supplied
+        cfg.api_auth_header = body.api_auth_header
+    cfg.api_response_path = body.api_response_path
+
+    await db.flush()
+    return APIResponse(data={"id": cfg.id, "name": cfg.name})
+
+
 @router.delete("/media-library/{config_id}", response_model=APIResponse)
 async def delete_media_library_config(
     config_id: int,

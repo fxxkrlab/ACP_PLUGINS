@@ -47,6 +47,11 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.18 (2026-04-08)
+- **Feature**: Edit existing media library configs in place — pencil icon on each card opens an inline edit form pre-filled with current values. Backend `PATCH /media-library/{id}` updates a single config.
+- **UX**: Password and API auth header are never pre-filled in the edit form. Leaving them blank keeps the existing value (so users can edit other fields without re-typing secrets).
+- **Refactor**: Form extracted into a reusable `MediaLibraryForm` component used by both create and edit modes.
+
 ### 1.0.17 (2026-04-08)
 - **Feature**: Multi-database support — Media Library Check now supports multiple connections side-by-side. Each one is rendered as its own card with Test/Delete buttons. The bot queries all active configs and merges results.
 - **Feature**: Library version detail — when the optional `name_column` (and optionally `is_dir_column` / `trashed_column`) is set, the bot reply card now shows version information below "已在媒体库中":
