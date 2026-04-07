@@ -260,6 +260,17 @@ async def _log_inbound(
     return db_msg
 
 
+def _strip_html(html: str) -> str:
+    """Strip HTML tags from a string, keeping the plain text content.
+
+    The plugin's ``_render_caption`` outputs Telegram HTML (``<b>``, ``<i>``,
+    ``<a>``), but the web chat panel renders message text via ReactMarkdown
+    which expects Markdown, not HTML. Storing raw HTML in ``text_content``
+    causes visual overlap/broken rendering in the chat window.
+    """
+    return re.sub(r"<[^>]+>", "", html)
+
+
 async def _log_outbound(
     session: AsyncSession,
     conversation_id: int,
@@ -276,7 +287,7 @@ async def _log_outbound(
         sender_type="bot",
         via_bot_id=bot_db_id,
         content_type="text",
-        text_content=text,
+        text_content=_strip_html(text),
         media_file_id=None,
         reply_to_message_id=reply_to_message_id,
         raw_data={"source": "plugin:movie-request"},
