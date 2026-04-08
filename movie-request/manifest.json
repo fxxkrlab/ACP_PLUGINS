@@ -1,7 +1,7 @@
 {
   "id": "movie-request",
   "name": "TMDB Movie Request",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "TMDB movie/TV request system with multi-key rotation and media library check",
   "author": {
     "name": "NovaHelix",
@@ -61,6 +61,18 @@
         "type": "string",
         "default": "zh-CN",
         "title": "TMDB API Language"
+      },
+      "fulfill_webhook_url": {
+        "type": "string",
+        "default": "",
+        "title": "Fulfill Webhook URL",
+        "description": "When a request is marked as fulfilled (✓), POST the request data to this URL. Leave empty to disable."
+      },
+      "fulfill_webhook_auth": {
+        "type": "string",
+        "default": "",
+        "title": "Fulfill Webhook Auth Header",
+        "description": "Authorization header value for the webhook (e.g. 'Bearer xxx'). Leave empty for no auth."
       }
     }
   },

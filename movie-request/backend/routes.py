@@ -4,7 +4,10 @@ Plugin routes — mounted at /api/v1/p/movie-request/ by PluginManager.
 """
 from __future__ import annotations
 
+import logging
 from typing import Annotated, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -387,7 +390,13 @@ async def update_request(
     db: Annotated[AsyncSession, Depends(get_db)],
     _admin: Annotated[Admin, Depends(require_admin)],
 ) -> APIResponse:
-    """Update movie request status / admin note."""
+    """Update movie request status / admin note.
+
+    When status changes to 'fulfilled' and a ``fulfill_webhook_url`` is
+    configured in the plugin config, a POST is sent to the webhook with
+    the request data as JSON (best-effort — failures are logged but do
+    not block the status change).
+    """
     result = await db.execute(
         select(MovieRequest).where(MovieRequest.id == request_id)
     )
@@ -395,13 +404,54 @@ async def update_request(
     if not req:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
 
+    old_status = req.status
+
     if body.status is not None:
         req.status = body.status
     if body.admin_note is not None:
         req.admin_note = body.admin_note
 
     await db.flush()
-    return APIResponse(data=MovieRequestOut.model_validate(req).model_dump())
+    await db.refresh(req)
+
+    out = MovieRequestOut.model_validate(req).model_dump()
+
+    # ── Fulfill webhook (best-effort) ──
+    if body.status == "fulfilled" and old_status != "fulfilled":
+        try:
+            from app.plugins.loader import get_plugin_manager
+
+            pm = get_plugin_manager()
+            ctx = pm.get_context("movie-request")
+            if ctx:
+                config = await ctx.config.get_all()
+                webhook_url = (config or {}).get("fulfill_webhook_url", "")
+                webhook_auth = (config or {}).get("fulfill_webhook_auth", "")
+                if webhook_url:
+                    import httpx
+                    headers: dict[str, str] = {"Content-Type": "application/json"}
+                    if webhook_auth:
+                        headers["Authorization"] = webhook_auth
+                    payload = {
+                        "id": req.id,
+                        "tmdb_id": req.tmdb_id,
+                        "media_type": req.media_type,
+                        "title": req.title,
+                        "original_title": req.original_title,
+                        "requested_resolution": req.requested_resolution,
+                        "request_count": req.request_count,
+                        "admin_note": req.admin_note,
+                    }
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        resp = await client.post(webhook_url, json=payload, headers=headers)
+                        logger.info(
+                            "Fulfill webhook sent for request %d: %d %s",
+                            req.id, resp.status_code, resp.text[:100],
+                        )
+        except Exception:
+            logger.warning("Fulfill webhook failed for request %d", req.id, exc_info=True)
+
+    return APIResponse(data=out)
 
 
 @router.delete("/{request_id:int}", response_model=APIResponse)

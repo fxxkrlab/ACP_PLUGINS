@@ -47,6 +47,11 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.24 (2026-04-08)
+- **Fix (CRITICAL)**: PATCH endpoint (✓ fulfill / ✗ reject) returned 500 `MissingGreenlet` error — `MovieRequestOut.model_validate(req)` tried to lazy-load `updated_at` (a server-generated value) outside the async greenlet context. Fixed by adding `await db.refresh(req)` after flush.
+- **Feature**: Fulfill webhook — when a request is marked as fulfilled (✓), the plugin POSTs the request data (tmdb_id, title, media_type, requested_resolution, etc.) to a configurable webhook URL. Configure `fulfill_webhook_url` and optionally `fulfill_webhook_auth` in the plugin config. Leave empty to disable.
+- **Config**: Added `fulfill_webhook_url` and `fulfill_webhook_auth` to `config_schema` in manifest.json.
+
 ### 1.0.23 (2026-04-08)
 - **Feature**: TV season supplement — compares library episode counts against TMDB's per-season totals. Incomplete seasons are flagged with ⚠️ in a compact summary format (e.g. "23季在库 | ✓ 20季完整 | ⚠️ 3季缺集"). Up to 3 inline buttons for the most-incomplete seasons (e.g. "✅ 补S21(缺11集)").
 - **Feature**: Precise episode supplement via reply — user replies to the bot's library-check card with `S21E15` or `S21` to submit a specific season/episode supplement request. Parsed via `TVSupplementReplyFilter` which validates the reply context (must be replying to a message with a TMDB TV link in caption_entities).
