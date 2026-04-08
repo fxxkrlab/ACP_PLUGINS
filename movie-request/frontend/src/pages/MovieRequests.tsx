@@ -13,6 +13,7 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  Info,
 } from 'lucide-react';
 import pluginApi from '../api';
 
@@ -157,6 +158,7 @@ export default function MovieRequests() {
   const [activeTab, setActiveTab] = useState<StatusTab>('all');
   const [page, setPage] = useState(1);
   const [mutatingId, setMutatingId] = useState<number | null>(null);
+  const [showWebhookPreview, setShowWebhookPreview] = useState(false);
 
   const { data: stats } = useQuery({
     queryKey: ['movie-request-stats'],
@@ -223,9 +225,22 @@ export default function MovieRequests() {
         >
           Movie Requests
         </h1>
-        <p className="text-sm mt-0.5" style={{ color: cv('text-muted') }}>
-          Manage TMDB movie and TV show requests from users
-        </p>
+        <div className="flex items-center gap-3 mt-0.5">
+          <p className="text-sm" style={{ color: cv('text-muted') }}>
+            Manage TMDB movie and TV show requests from users
+          </p>
+          <button
+            onClick={() => setShowWebhookPreview(!showWebhookPreview)}
+            className="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-colors"
+            style={{
+              color: showWebhookPreview ? cv('accent') : cv('text-muted'),
+              background: showWebhookPreview ? `color-mix(in srgb, ${cv('accent')} 10%, transparent)` : 'transparent',
+              border: `1px solid ${showWebhookPreview ? cv('accent') : cv('border')}`,
+            }}
+          >
+            <Info size={12} /> Webhook
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 px-8 py-6 overflow-auto">
@@ -236,6 +251,65 @@ export default function MovieRequests() {
           <StatCard label="Fulfilled" value={stats?.fulfilled ?? 0} icon={CheckCircle} color={cv('green')} />
           <StatCard label="Rejected" value={stats?.rejected ?? 0} icon={XCircle} color={cv('red')} />
         </div>
+
+        {/* Webhook preview */}
+        {showWebhookPreview && (
+          <div
+            className="mb-6 rounded-[10px] p-5 text-xs font-['JetBrains_Mono']"
+            style={{ background: cv('bg-card'), border: `1px solid ${cv('border')}` }}
+          >
+            <h4 className="text-sm font-semibold font-['Space_Grotesk'] mb-3" style={{ color: cv('text-primary') }}>
+              Fulfill Webhook — 推送示例
+            </h4>
+            <p className="mb-3" style={{ color: cv('text-muted') }}>
+              当点击 <Check size={12} className="inline" /> 按钮标记为 fulfilled 时，插件会 POST 以下数据到配置的 Webhook URL。在 Settings → Request Config → Plugin Config 中配置。
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="mb-1 font-semibold" style={{ color: cv('text-secondary') }}>Request Headers</p>
+                <pre className="p-3 rounded text-[11px] leading-relaxed overflow-auto" style={{ background: cv('bg-elevated'), color: cv('text-primary') }}>
+{`POST https://your-api.com/fulfill
+Content-Type: application/json
+
+# 鉴权方式示例 (任选一种):
+
+# Bearer Token:
+Authorization: Bearer eyJhbGci...
+
+# API Key:
+X-Api-Key: my-secret-key
+
+# Basic Auth:
+Authorization: Basic dXNlcjpwYXNz
+
+# 无鉴权: 留空即可`}
+                </pre>
+              </div>
+              <div>
+                <p className="mb-1 font-semibold" style={{ color: cv('text-secondary') }}>Request Body (JSON)</p>
+                <pre className="p-3 rounded text-[11px] leading-relaxed overflow-auto" style={{ background: cv('bg-elevated'), color: cv('text-primary') }}>
+{`{
+  "id": 8,
+  "tmdb_id": 4614,
+  "media_type": "tv",
+  "title": "海军罪案调查处",
+  "original_title": "NCIS",
+  "requested_resolution": "S05E18",
+  "request_count": 1,
+  "admin_note": null
+}
+
+// requested_resolution 值说明:
+// null     → 普通求片(整部)
+// "4K"     → 补片4K版本
+// "1080p"  → 补片1080p版本
+// "S21"    → 补集整季(第21季)
+// "S05E18" → 补集单集`}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center gap-6 mb-6" style={{ borderBottom: `1px solid ${cv('border-subtle')}` }}>

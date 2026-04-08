@@ -426,12 +426,13 @@ async def update_request(
             if ctx:
                 config = await ctx.config.get_all()
                 webhook_url = (config or {}).get("fulfill_webhook_url", "")
-                webhook_auth = (config or {}).get("fulfill_webhook_auth", "")
+                header_name = (config or {}).get("fulfill_webhook_header_name", "")
+                header_value = (config or {}).get("fulfill_webhook_header_value", "")
                 if webhook_url:
                     import httpx
                     headers: dict[str, str] = {"Content-Type": "application/json"}
-                    if webhook_auth:
-                        headers["Authorization"] = webhook_auth
+                    if header_name and header_value:
+                        headers[header_name] = header_value
                     payload = {
                         "id": req.id,
                         "tmdb_id": req.tmdb_id,
