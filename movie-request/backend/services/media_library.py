@@ -570,15 +570,67 @@ async def check_one_config(
 #  Pretty-printers (for the bot reply card)
 # ──────────────────────────────────────────────
 
+def _get_tmdb_season_counts(tmdb_raw: dict | None) -> dict[int, int]:
+    """Extract {season_number: episode_count} from cached TMDB response.
+
+    Skips season 0 (Specials) since it's rarely relevant for supplement
+    requests and inflates the "missing" count.
+    """
+    if not tmdb_raw:
+        return {}
+    return {
+        s["season_number"]: s["episode_count"]
+        for s in tmdb_raw.get("seasons") or []
+        if s.get("season_number", 0) > 0 and s.get("episode_count", 0) > 0
+    }
+
+
+def detect_incomplete_seasons(
+    info: dict[str, Any],
+    tmdb_raw: dict | None,
+) -> list[dict[str, Any]]:
+    """Compare library seasons against TMDB episode counts.
+
+    Returns a list of ``{"season": int, "have": int, "total": int,
+    "missing": int}`` dicts, sorted by ``missing`` descending.
+    Only includes seasons where ``have < total``.
+    """
+    tmdb_counts = _get_tmdb_season_counts(tmdb_raw)
+    if not tmdb_counts:
+        return []
+
+    lib_map: dict[int, int] = {}
+    for s in info.get("tv_seasons") or []:
+        lib_map[s["season"]] = s.get("ep_count", 0)
+
+    incomplete: list[dict[str, Any]] = []
+    all_seasons = sorted(set(tmdb_counts.keys()) | set(lib_map.keys()))
+    for sn in all_seasons:
+        total = tmdb_counts.get(sn, 0)
+        have = lib_map.get(sn, 0)
+        if total > 0 and have < total:
+            incomplete.append({
+                "season": sn,
+                "have": have,
+                "total": total,
+                "missing": total - have,
+            })
+
+    incomplete.sort(key=lambda x: x["missing"], reverse=True)
+    return incomplete
+
+
 def format_library_detail_lines(
-    info: dict[str, Any], media_type: str
+    info: dict[str, Any],
+    media_type: str,
+    tmdb_raw: dict | None = None,
 ) -> list[str]:
     """Render LibraryInfo as human-readable lines (Chinese).
 
-    For TV requests: shows per-season episode ranges grouped with
-    resolution info. Standalone (non-SxxExx) files are shown separately
-    under a "其他版本" heading so they're visually distinct from episode
-    listings.
+    For TV requests: uses a compact format that only details incomplete
+    seasons (comparing against TMDB episode counts). Complete seasons
+    are summarised in one line. Stays well within Telegram's 1024-char
+    caption limit even for 20+ season shows.
 
     For movie requests: shows resolution × count for each version.
     """
@@ -589,33 +641,53 @@ def format_library_detail_lines(
     tv_seasons = info.get("tv_seasons") or []
     versions = info.get("movie_versions") or []
 
-    if media_type == "tv":
-        # ── TV mode: show seasons + episodes ──
-        if tv_seasons:
-            total_seasons = len(tv_seasons)
-            lines.append(f"\U0001f4fa \u5267\u96c6 ({total_seasons}\u5b63):")
-            for s in tv_seasons:
-                res = "/".join(s.get("resolutions") or []) or "\u5176\u4ed6"
-                lines.append(
-                    f"  S{s['season']:02d}: "
-                    f"E{s['first_ep']:02d}-E{s['last_ep']:02d} "
-                    f"({res}) {s['ep_count']}\u96c6"
-                )
-        # Non-episode files under TV shows = specials/extras
-        if versions:
-            lines.append(f"\n\U0001f4c0 \u5176\u4ed6\u7248\u672c:")
-            for v in versions:
-                label = v["resolution"]
-                if v.get("hdr"):
-                    label += f" {v['hdr']}"
-                lines.append(f"  {label} \u00d7 {v['count']}")
+    if media_type == "tv" and tv_seasons:
+        # ── TV compact mode ──
+        tmdb_counts = _get_tmdb_season_counts(tmdb_raw)
+        total_lib_seasons = len(tv_seasons)
+        incomplete = detect_incomplete_seasons(info, tmdb_raw)
+        incomplete_nums = {i["season"] for i in incomplete}
+        complete_count = total_lib_seasons - len(
+            [s for s in tv_seasons if s["season"] in incomplete_nums]
+        )
 
-    else:
-        # ── Movie mode: show resolution × count ──
+        # Summary line
+        if incomplete:
+            lines.append(
+                f"\U0001f4fa {total_lib_seasons}\u5b63\u5728\u5e93"
+                f" | \u2713 {complete_count}\u5b63\u5b8c\u6574"
+                f" | \u26a0\ufe0f {len(incomplete)}\u5b63\u7f3a\u96c6"
+            )
+        else:
+            lines.append(f"\U0001f4fa {total_lib_seasons}\u5b63\u5728\u5e93 | \u2713 \u5168\u90e8\u5b8c\u6574")
+
+        # Detail only incomplete seasons (top 6 to stay under caption limit)
+        for gap in incomplete[:6]:
+            lines.append(
+                f"  \u26a0\ufe0f S{gap['season']:02d}: "
+                f"{gap['have']}/{gap['total']}\u96c6"
+            )
+
+        # Also show completely missing seasons from TMDB
+        lib_season_nums = {s["season"] for s in tv_seasons}
+        for sn in sorted(tmdb_counts.keys()):
+            if sn not in lib_season_nums and sn not in incomplete_nums:
+                total = tmdb_counts[sn]
+                lines.append(f"  \u26a0\ufe0f S{sn:02d}: 0/{total}\u96c6")
+
+    elif media_type == "tv" and not tv_seasons:
+        # In library but no SxxExx files parsed — just show file count
+        lines.append(f"\U0001f4c1 {info.get('total_files', 0)} \u4e2a\u6587\u4ef6\u5728\u5e93")
+
+    # Movie versions (also shown for TV as "其他版本" for extras)
+    if versions:
+        if media_type == "tv":
+            lines.append(f"\n\U0001f4c0 \u5176\u4ed6\u7248\u672c:")
         for v in versions:
             label = v["resolution"]
             if v.get("hdr"):
                 label += f" {v['hdr']}"
-            lines.append(f"\U0001f4c0 {label} \u00d7 {v['count']}")
+            prefix = "  " if media_type == "tv" else "\U0001f4c0 "
+            lines.append(f"{prefix}{label} \u00d7 {v['count']}")
 
     return lines

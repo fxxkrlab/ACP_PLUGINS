@@ -47,6 +47,12 @@ All tables use the `plg_movie_request_` prefix:
 
 ## Changelog
 
+### 1.0.23 (2026-04-08)
+- **Feature**: TV season supplement — compares library episode counts against TMDB's per-season totals. Incomplete seasons are flagged with ⚠️ in a compact summary format (e.g. "23季在库 | ✓ 20季完整 | ⚠️ 3季缺集"). Up to 3 inline buttons for the most-incomplete seasons (e.g. "✅ 补S21(缺11集)").
+- **Feature**: Precise episode supplement via reply — user replies to the bot's library-check card with `S21E15` or `S21` to submit a specific season/episode supplement request. Parsed via `TVSupplementReplyFilter` which validates the reply context (must be replying to a message with a TMDB TV link in caption_entities).
+- **Display**: Compact format for TV shows replaces per-season listing for complete seasons. Only incomplete/missing seasons are detailed. Stays within Telegram's 1024-char caption limit for 20+ season shows.
+- **Backend**: `detect_incomplete_seasons()` and `_get_tmdb_season_counts()` helpers in media_library.py. New callback action `ts` (TV supplement) in handlers. `format_library_detail_lines()` now accepts optional `tmdb_raw` for comparison. `requested_resolution` stores "S21" or "S21E15" for TV supplements.
+
 ### 1.0.22 (2026-04-08)
 - **Feature**: Path-based fallback query — when the `tmdb` column is empty (common for older seasons), the plugin now also queries by `path LIKE '%[tmdbid=XXX]%'`. This recovers 647K+ files that were invisible before because the strm system didn't populate their tmdb field.
 - **Feature**: Media-type filtering at path level — prevents tmdb_id collisions (e.g. `/movie/4614` = 惊天核网 vs `/tv/4614` = NCIS). TV queries only match files under `/Season NN/` subdirectories; movie queries exclude Season folders.

@@ -1,7 +1,7 @@
 {
   "id": "movie-request",
   "name": "TMDB Movie Request",
-  "version": "1.0.22",
+  "version": "1.0.23",
   "description": "TMDB movie/TV request system with multi-key rotation and media library check",
   "author": {
     "name": "NovaHelix",

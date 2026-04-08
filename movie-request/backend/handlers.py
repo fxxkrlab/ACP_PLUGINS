@@ -43,7 +43,11 @@ from app.models.user import TgUser
 
 from backend.models import MovieRequest, MovieRequestUser
 from backend.services.tmdb import get_tmdb_client, parse_tmdb_url, TMDB_IMAGE_BASE
-from backend.services.media_library import check_in_library, format_library_detail_lines
+from backend.services.media_library import (
+    check_in_library,
+    detect_incomplete_seasons,
+    format_library_detail_lines,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +143,65 @@ def _supplement_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _tv_supplement_keyboard(
+    media_type: str,
+    tmdb_id: int,
+    user_tg_uid: int,
+    incomplete: list[dict],
+    max_buttons: int = 3,
+) -> InlineKeyboardMarkup:
+    """Inline keyboard for TV season supplement. Shows up to ``max_buttons``
+    buttons for the most-incomplete seasons plus a Cancel button.
+    """
+    suffix = f"{media_type}:{tmdb_id}:{user_tg_uid}"
+    rows: list[list[InlineKeyboardButton]] = []
+
+    top = incomplete[:max_buttons]
+    btn_row: list[InlineKeyboardButton] = []
+    for gap in top:
+        sn = gap["season"]
+        missing = gap["missing"]
+        btn_row.append(InlineKeyboardButton(
+            text=f"\u2705 \u8865S{sn:02d}(\u7f3a{missing}\u96c6)",  # ✅ 补S21(缺11集)
+            callback_data=f"mr:ts:{suffix}:s{sn}",
+        ))
+        if len(btn_row) == 2:
+            rows.append(btn_row)
+            btn_row = []
+    if btn_row:
+        rows.append(btn_row)
+
+    rows.append([InlineKeyboardButton(
+        text="\u274c \u53d6\u6d88",  # ❌ 取消
+        callback_data=f"mr:x:{suffix}",
+    )])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 # ──────────────────────────────────────────────
-#  Custom filter
+#  Custom filters
 # ──────────────────────────────────────────────
+
+class TVSupplementReplyFilter(Filter):
+    """Returns True when a user replies to a library-check card with a
+    ``SxxExx`` or ``Sxx`` pattern (for precise episode/season supplement).
+    """
+
+    async def __call__(self, message: TgMessage, **_kwargs: Any) -> bool:
+        if not message.reply_to_message:
+            return False
+        reply = message.reply_to_message
+        # Must be replying to a message with a TMDB link in caption_entities
+        for entity in reply.caption_entities or []:
+            if entity.type == "text_link" and "themoviedb.org/tv/" in (entity.url or ""):
+                break
+        else:
+            return False
+        # Reply text must match SxxExx or Sxx pattern
+        text = (message.text or "").strip()
+        return bool(re.match(r'^[Ss]\d{1,4}(?:[Ee]\d{1,4})?$', text))
+
 
 class MovieRequestTrigger(Filter):
     """
@@ -475,33 +535,49 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
             in_library = library_info.get("exists", False)
             await session.commit()
 
-            # ---- 5. Already in library? Three sub-cases ----
+            # ---- 5. Already in library? Supplement logic ----
             if in_library:
                 preview = _build_movie_request(tmdb_data, media_type, tmdb_id, True)
-                detail_lines = format_library_detail_lines(library_info, media_type)
-
-                # 5a. Movies: check for missing 1080p/4K versions and offer
-                #     "supplement-request" buttons. TV shows skip this — their
-                #     completeness is per-season-episode, not per-resolution.
-                missing = (
-                    _missing_main_resolutions(library_info)
-                    if media_type == "movie" else []
+                detail_lines = format_library_detail_lines(
+                    library_info, media_type, tmdb_raw=tmdb_data,
                 )
 
-                if missing:
-                    extra_lines = list(detail_lines) + [
-                        f"\n\U0001f4a1 \u5e93\u5185\u7f3a\u5c11 "
-                        f"{' / '.join(missing)} \u7248\u672c\uff0c\u662f\u5426\u8865\u7247\uff1f"
-                    ]
-                    keyboard = _supplement_keyboard(media_type, tmdb_id, tg_user.id, missing)
+                # 5a. Movies: check for missing 1080p/4K
+                # 5b. TV: check for incomplete seasons
+                keyboard: InlineKeyboardMarkup | None = None
+                is_supplement = False
+                extra_lines = list(detail_lines)
+
+                if media_type == "movie":
+                    missing = _missing_main_resolutions(library_info)
+                    if missing:
+                        extra_lines.append(
+                            f"\n\U0001f4a1 \u5e93\u5185\u7f3a\u5c11 "
+                            f"{' / '.join(missing)} \u7248\u672c\uff0c\u662f\u5426\u8865\u7247\uff1f"
+                        )
+                        keyboard = _supplement_keyboard(media_type, tmdb_id, tg_user.id, missing)
+                        is_supplement = True
+
+                elif media_type == "tv":
+                    incomplete = detect_incomplete_seasons(library_info, tmdb_data)
+                    if incomplete:
+                        extra_lines.append(
+                            f"\n\U0001f4a1 \u56de\u590d\u672c\u6d88\u606f\u8f93\u5165 "
+                            f"S21E15 \u53ef\u7cbe\u786e\u8865\u5355\u96c6"
+                        )
+                        keyboard = _tv_supplement_keyboard(
+                            media_type, tmdb_id, tg_user.id, incomplete,
+                        )
+                        is_supplement = True
+
+                if is_supplement and keyboard:
                     sent = await _send_reply_card(
                         message, preview,
-                        status_override="\u2705 <b>已在媒体库中</b>",
+                        status_override="\u2705 <b>\u5df2\u5728\u5a92\u4f53\u5e93\u4e2d</b>",
                         extra_lines=extra_lines,
                         reply_markup=keyboard,
                     )
 
-                    # Cache for the supplement callback
                     _evict_stale_pending()
                     cache_key = f"{media_type}:{tmdb_id}:{tg_user.id}"
                     _pending[cache_key] = {
@@ -509,7 +585,6 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
                         "in_library": in_library,
                         "library_info": library_info,
                         "is_supplement": True,
-                        "missing_resolutions": missing,
                         "bot_db_id": bot_db_id,
                         "conv_id": conv.id,
                         "chat_id": message.chat.id,
@@ -523,7 +598,7 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
                             outsess, conv.id, bot_db_id,
                             text=_render_caption(
                                 preview,
-                                status_override="✅ 已在媒体库中（缺 " + "/".join(missing) + "）",
+                                status_override="\u2705 \u5df2\u5728\u5a92\u4f53\u5e93\u4e2d",
                                 extra_lines=extra_lines,
                             ),
                             tg_message_id=getattr(sent, "message_id", None),
@@ -532,10 +607,10 @@ async def handle_movie_request(message: TgMessage, bot_db_id: int) -> None:
                         await outsess.commit()
                     return
 
-                # 5b. Fully in library — no buttons, informational only
+                # 5c. Fully complete — no buttons
                 sent = await _send_reply_card(
                     message, preview,
-                    status_override="\u2705 <b>已在媒体库中</b>",
+                    status_override="\u2705 <b>\u5df2\u5728\u5a92\u4f53\u5e93\u4e2d</b>",
                     extra_lines=detail_lines,
                 )
                 async with async_session_factory() as outsess:
@@ -801,6 +876,91 @@ async def handle_request_callback(
                 except Exception:
                     logger.debug("Failed to log outbound for supplement", exc_info=True)
 
+        elif action == "ts":  # ── TV Season Supplement (补 S21) ──
+            if not extra or not extra.startswith("s"):
+                await callback.answer("\u274c Invalid season", show_alert=True)
+                return
+            try:
+                season_num = int(extra[1:])
+            except ValueError:
+                await callback.answer("\u274c Invalid season number", show_alert=True)
+                return
+            requested_resolution = f"S{season_num:02d}"
+
+            if cached:
+                tmdb_data = cached["tmdb_data"]
+                library_info_local = cached.get("library_info") or {}
+                conv_id = cached.get("conv_id")
+            else:
+                async with async_session_factory() as sess:
+                    client = get_tmdb_client()
+                    tmdb_data = await client.get_media(sess, media_type, tmdb_id)
+                    library_info_local = await check_in_library(sess, tmdb_id, media_type)
+                    await sess.commit()
+                conv_id = None
+
+            if not tmdb_data:
+                await callback.answer(
+                    "\u26a0\ufe0f TMDB data unavailable", show_alert=True
+                )
+                return
+
+            async with async_session_factory() as sess:
+                result = await sess.execute(
+                    select(TgUser).where(TgUser.tg_uid == user_tg_uid)
+                )
+                db_user = result.scalar_one_or_none()
+                if db_user is None:
+                    await callback.answer("\u274c User not found", show_alert=True)
+                    return
+
+                req = await _save_request(
+                    sess, tmdb_data, media_type, tmdb_id,
+                    in_library=True,
+                    tg_user_db_id=db_user.id,
+                    requested_resolution=requested_resolution,
+                )
+                await sess.commit()
+                await sess.refresh(req)
+
+            detail_lines = format_library_detail_lines(
+                library_info_local, media_type, tmdb_raw=tmdb_data,
+            )
+            confirmed_caption = _render_caption(
+                req,
+                status_override=f"\u2705 <b>\u8865 {requested_resolution} \u5df2\u63d0\u4ea4</b>",
+                extra_lines=detail_lines,
+            )
+            try:
+                if callback.message and callback.message.photo:
+                    await callback.message.edit_caption(
+                        caption=confirmed_caption,
+                        parse_mode="HTML",
+                        reply_markup=None,
+                    )
+                elif callback.message:
+                    await callback.message.edit_text(
+                        text=confirmed_caption,
+                        parse_mode="HTML",
+                        reply_markup=None,
+                    )
+            except Exception:
+                logger.warning("Failed to edit message after TV supplement", exc_info=True)
+
+            await callback.answer(f"\u2705 \u8865 {requested_resolution} \u5df2\u63d0\u4ea4")
+
+            if conv_id and bot_db_id is not None:
+                try:
+                    async with async_session_factory() as outsess:
+                        await _log_outbound(
+                            outsess, conv_id, bot_db_id,
+                            text=f"[补集 {requested_resolution}] " + (req.title or ""),
+                            tg_message_id=getattr(callback.message, "message_id", None),
+                        )
+                        await outsess.commit()
+                except Exception:
+                    logger.debug("Failed to log outbound for TV supplement", exc_info=True)
+
         elif action == "x":  # ── Cancel ──
             # Build a preview req for re-rendering the caption
             is_supplement = bool(cached and cached.get("is_supplement"))
@@ -855,6 +1015,118 @@ async def handle_request_callback(
         await callback.answer(
             "\u26a0\ufe0f An error occurred", show_alert=True
         )
+
+
+# ──────────────────────────────────────────────
+#  Reply handler: precise SxxExx supplement
+# ──────────────────────────────────────────────
+
+@router.message(TVSupplementReplyFilter())
+async def handle_tv_supplement_reply(
+    message: TgMessage,
+    bot_db_id: int | None = None,
+) -> None:
+    """Handle a reply to a library-check card with ``S21E15`` or ``S21``
+    text — submits a precise supplement request for that season/episode.
+    """
+    tg_user = message.from_user
+    if tg_user is None or tg_user.is_bot:
+        return
+
+    text = (message.text or "").strip().upper()
+    m = re.match(r'^S(\d{1,4})(?:E(\d{1,4}))?$', text)
+    if not m:
+        return
+
+    season = int(m.group(1))
+    episode = int(m.group(2)) if m.group(2) else None
+    requested_resolution = f"S{season:02d}" if episode is None else f"S{season:02d}E{episode:02d}"
+
+    # Extract tmdb_id from the replied-to message's caption entities
+    reply = message.reply_to_message
+    tmdb_id: int | None = None
+    media_type = "tv"
+    for entity in reply.caption_entities or []:
+        if entity.type == "text_link" and "themoviedb.org/" in (entity.url or ""):
+            tm = re.search(r'(movie|tv)/(\d+)', entity.url or "")
+            if tm:
+                media_type = tm.group(1)
+                tmdb_id = int(tm.group(2))
+                break
+
+    if tmdb_id is None:
+        await message.reply(
+            "\u274c \u65e0\u6cd5\u8bc6\u522b TMDB ID\uff0c\u8bf7\u786e\u8ba4\u56de\u590d\u7684\u662f\u5a92\u4f53\u5e93\u67e5\u8be2\u5361\u7247",
+            parse_mode="HTML",
+        )
+        return
+
+    async with async_session_factory() as session:
+        try:
+            # Upsert TgUser
+            result = await session.execute(
+                select(TgUser).where(TgUser.tg_uid == tg_user.id)
+            )
+            db_user = result.scalar_one_or_none()
+            if db_user is None:
+                db_user = TgUser(
+                    tg_uid=tg_user.id,
+                    username=tg_user.username,
+                    first_name=tg_user.first_name,
+                    last_name=tg_user.last_name,
+                    language_code=tg_user.language_code,
+                    is_premium=tg_user.is_premium or False,
+                    is_bot=tg_user.is_bot,
+                )
+                session.add(db_user)
+                await session.flush()
+
+            # Fetch TMDB data for the title
+            client = get_tmdb_client()
+            tmdb_data = await client.get_media(session, media_type, tmdb_id)
+            if not tmdb_data:
+                await message.reply(
+                    "\u26a0\ufe0f TMDB API error", parse_mode="HTML"
+                )
+                await session.commit()
+                return
+
+            # Save the supplement request
+            req = await _save_request(
+                session, tmdb_data, media_type, tmdb_id,
+                in_library=True,
+                tg_user_db_id=db_user.id,
+                requested_resolution=requested_resolution,
+            )
+            await session.commit()
+
+            title = tmdb_data.get("title") or tmdb_data.get("name") or "Unknown"
+            await message.reply(
+                f"\u2705 <b>\u8865\u96c6\u8bf7\u6c42\u5df2\u63d0\u4ea4</b>\n"
+                f"{_html_escape(title)} \u2014 {requested_resolution}",
+                parse_mode="HTML",
+            )
+
+            # Log to panel
+            if bot_db_id is not None:
+                conv = await _upsert_panel_conversation(
+                    session, db_user.id, bot_db_id, message.chat.type,
+                )
+                async with async_session_factory() as outsess:
+                    await _log_inbound(outsess, conv.id, bot_db_id, message)
+                    await _log_outbound(
+                        outsess, conv.id, bot_db_id,
+                        text=f"[补集 {requested_resolution}] {title}",
+                    )
+                    await outsess.commit()
+
+        except Exception:
+            await session.rollback()
+            logger.exception("Error handling TV supplement reply from tg_uid=%s", tg_user.id)
+            try:
+                await message.reply("An error occurred processing your supplement request.")
+            except Exception:
+                pass
 
 
 # ──────────────────────────────────────────────
