@@ -414,6 +414,12 @@ async def _save_request(
 
     if existing:
         existing.request_count += 1
+        # If a new user requests a previously rejected/fulfilled movie,
+        # reopen it as pending so it reappears in the admin's queue.
+        # This way popular requests that were rejected still surface
+        # when demand accumulates from other users.
+        if existing.status in ("rejected", "fulfilled"):
+            existing.status = "pending"
         user_result = await session.execute(
             select(MovieRequestUser).where(
                 MovieRequestUser.movie_request_id == existing.id,

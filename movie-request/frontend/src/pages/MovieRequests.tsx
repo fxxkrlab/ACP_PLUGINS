@@ -6,6 +6,7 @@ import {
   Check,
   X,
   Trash2,
+  RotateCcw,
   ExternalLink,
   Clock,
   CheckCircle,
@@ -471,67 +472,64 @@ Authorization: Basic dXNlcjpwYXNz
                         <StatusBadge status={req.status} />
                       </td>
                       <td className="px-5 py-3 text-right">
-                        {req.status === 'pending' && (
-                          <div className="flex items-center gap-1 justify-end">
-                            {mutatingId === req.id ? (
-                              <Loader2 size={16} className="animate-spin" style={{ color: cv('text-muted') }} />
-                            ) : (
-                              <>
+                        <div className="flex items-center gap-1 justify-end">
+                          {mutatingId === req.id ? (
+                            <Loader2 size={16} className="animate-spin" style={{ color: cv('text-muted') }} />
+                          ) : (
+                            <>
+                              {req.status === 'pending' && (
+                                <>
+                                  <button
+                                    onClick={() => mutation.mutate({ id: req.id, status: 'fulfilled' })}
+                                    disabled={mutatingId !== null}
+                                    className="p-1.5 rounded-md transition-all disabled:opacity-30"
+                                    style={{ color: cv('text-muted') }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.color = cv('green'); e.currentTarget.style.background = `color-mix(in srgb, ${cv('green')} 10%, transparent)`; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.color = cv('text-muted'); e.currentTarget.style.background = 'transparent'; }}
+                                    title="Fulfill"
+                                  >
+                                    <Check size={16} />
+                                  </button>
+                                  <button
+                                    onClick={() => mutation.mutate({ id: req.id, status: 'rejected' })}
+                                    disabled={mutatingId !== null}
+                                    className="p-1.5 rounded-md transition-all disabled:opacity-30"
+                                    style={{ color: cv('text-muted') }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.color = cv('red'); e.currentTarget.style.background = `color-mix(in srgb, ${cv('red')} 10%, transparent)`; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.color = cv('text-muted'); e.currentTarget.style.background = 'transparent'; }}
+                                    title="Reject"
+                                  >
+                                    <X size={16} />
+                                  </button>
+                                </>
+                              )}
+                              {req.status !== 'pending' && (
                                 <button
-                                  onClick={() => mutation.mutate({ id: req.id, status: 'fulfilled' })}
+                                  onClick={() => mutation.mutate({ id: req.id, status: 'pending' })}
                                   disabled={mutatingId !== null}
                                   className="p-1.5 rounded-md transition-all disabled:opacity-30"
                                   style={{ color: cv('text-muted') }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.color = cv('green');
-                                    e.currentTarget.style.background = `color-mix(in srgb, ${cv('green')} 10%, transparent)`;
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.color = cv('text-muted');
-                                    e.currentTarget.style.background = 'transparent';
-                                  }}
-                                  title="Fulfill"
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = cv('accent'); e.currentTarget.style.background = `color-mix(in srgb, ${cv('accent')} 10%, transparent)`; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.color = cv('text-muted'); e.currentTarget.style.background = 'transparent'; }}
+                                  title="Reopen as Pending"
                                 >
-                                  <Check size={16} />
+                                  <RotateCcw size={14} />
                                 </button>
-                                <button
-                                  onClick={() => mutation.mutate({ id: req.id, status: 'rejected' })}
-                                  disabled={mutatingId !== null}
-                                  className="p-1.5 rounded-md transition-all disabled:opacity-30"
-                                  style={{ color: cv('text-muted') }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.color = cv('red');
-                                    e.currentTarget.style.background = `color-mix(in srgb, ${cv('red')} 10%, transparent)`;
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.color = cv('text-muted');
-                                    e.currentTarget.style.background = 'transparent';
-                                  }}
-                                  title="Reject"
-                                >
-                                  <X size={16} />
-                                </button>
-                              </>
-                            )}
-                            <button
-                              onClick={() => { if (confirm('Delete this request permanently?')) deleteMutation.mutate(req.id); }}
-                              disabled={mutatingId !== null}
-                              className="p-1.5 rounded-md transition-all disabled:opacity-30"
-                              style={{ color: cv('text-muted') }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.color = cv('red');
-                                e.currentTarget.style.background = `color-mix(in srgb, ${cv('red')} 10%, transparent)`;
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.color = cv('text-muted');
-                                e.currentTarget.style.background = 'transparent';
-                              }}
-                              title="Delete"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        )}
+                              )}
+                              <button
+                                onClick={() => { if (confirm('Delete this request permanently?')) deleteMutation.mutate(req.id); }}
+                                disabled={mutatingId !== null}
+                                className="p-1.5 rounded-md transition-all disabled:opacity-30"
+                                style={{ color: cv('text-muted') }}
+                                onMouseEnter={(e) => { e.currentTarget.style.color = cv('red'); e.currentTarget.style.background = `color-mix(in srgb, ${cv('red')} 10%, transparent)`; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.color = cv('text-muted'); e.currentTarget.style.background = 'transparent'; }}
+                                title="Delete"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
